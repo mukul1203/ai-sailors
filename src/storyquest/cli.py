@@ -15,9 +15,17 @@ from storyquest.agent.turn import run_turn
 from storyquest.catalog.importer import CatalogError, import_books
 from storyquest.config import Settings, load_settings
 from storyquest.domain.position import Position
+from storyquest.evaluation.html_report import render_html
 from storyquest.evaluation.items import GoldItem, load_items
 from storyquest.evaluation.report import compare, summarize
-from storyquest.evaluation.runner import load_run, make_config, run_eval, write_run
+from storyquest.evaluation.runner import (
+    judge_rows,
+    load_run,
+    make_config,
+    run_eval,
+    save_run,
+    write_run,
+)
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.inspect import render_book, render_hits
 from storyquest.ingestion.pipeline import load_cleaned, run_deterministic
@@ -150,9 +158,43 @@ def _eval_run(args: argparse.Namespace) -> int:
         return 1
     rows = run_eval(ctx, items, mode, log=print)
     config = make_config(ctx, mode, args.split, golden, rows)
+    if args.judge:
+        rows = judge_rows(ctx, {i.id: i for i in items}, rows, log=print)
+        config.update(judged=True, judge_model=settings.llm_model)
     summary = summarize(config, rows)
     run_dir = write_run(settings.root / "eval" / "runs", config, rows, summary)
     print("\n" + summary + f"\n\nSaved to {run_dir.relative_to(settings.root)}")
+    return 0
+
+
+def _eval_judge(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    run_dir = Path(args.run)
+    config, rows = load_run(run_dir)
+    golden = Path(config.get("golden_path") or settings.root / "eval" / "golden_v1.jsonl")
+    items = {i.id: i for i in load_items(golden)}
+    try:
+        llm = build_llm(settings, use_cache=not args.no_cache)
+        ctx = load_context(conn, llm, settings, config["book"])
+    except (LLMError, AgentError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    rows = judge_rows(ctx, items, rows, log=print)
+    config.update(judged=True, judge_model=settings.llm_model)
+    summary = summarize(config, rows)
+    save_run(run_dir, config, rows, summary)
+    print("\n" + summary)
+    return 0
+
+
+def _eval_report(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run)
+    config, rows = load_run(run_dir)
+    baseline = load_run(Path(args.against)) if args.against else None
+    page = run_dir / "report.html"
+    page.write_text(render_html(config, rows, baseline))
+    print(f"Wrote {page}")
+    print(f"Open it in a browser, e.g. on macOS: open {page}")
     return 0
 
 
@@ -224,6 +266,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--book", type=int, default=236)
     run.add_argument("--golden", help="path to a golden-set file")
     run.add_argument("--no-cache", action="store_true")
+    run.add_argument("--judge", action="store_true", help="also run the LLM judge")
+    jdg = ev.add_parser("judge", help="Add LLM judge verdicts to a saved run")
+    jdg.add_argument("run")
+    jdg.add_argument("--no-cache", action="store_true")
+    rep = ev.add_parser("report", help="Write report.html for a saved run")
+    rep.add_argument("run")
+    rep.add_argument("--against", help="another run to compare with")
     cmp = ev.add_parser("compare", help="Compare two saved runs")
     cmp.add_argument("run_a")
     cmp.add_argument("run_b")
@@ -254,5 +303,10 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "ask":
         return _ask(args)
     if args.command == "eval":
-        return _eval_run(args) if args.eval_command == "run" else _eval_compare(args)
+        return {
+            "run": _eval_run,
+            "judge": _eval_judge,
+            "report": _eval_report,
+            "compare": _eval_compare,
+        }[args.eval_command](args)
     return 2

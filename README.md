@@ -11,12 +11,23 @@ StoryQuest Copilot: a parent-approved, book-grounded storytelling game for child
 ## Getting started
 
 ```
-make help         # list developer tasks
+make help         # list developer tasks (each has a comment in the Makefile)
 make setup        # create .env, venv and dependencies
 make doctor       # check tools, secrets and certificate
-make check-data   # validate the golden set, spine and Jungle Book fixture
+make check        # data checks, lint, types and tests
 ```
 
 Secrets go in `.env` (see `.env.example`); settings are in `config.env`.
 
-The application code is not written yet; targets that need it print a clear message.
+Try the agent on the Jungle Book (needs the model key and certificate):
+
+```
+make seed
+make ingest BOOK=236 ARGS="--spine eval/spine_mowgli_brothers.json"
+make ask BOOK=236 Q="Who is Tabaqui?" MODE=M1 ARGS="--chapter 0 --beat 0"
+make db-viewer    # browse the database at http://localhost:8001
+```
+
+Evaluate it and view the HTML report: see [eval/README.md](eval/README.md#0-running-the-evaluation).
+
+The web app, admin area and deployment are not built yet; targets for them print a clear message.

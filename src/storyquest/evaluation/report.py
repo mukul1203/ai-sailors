@@ -36,7 +36,8 @@ def summarize(config: Row, rows: list[Row]) -> str:
     out.append("Routes: " + ", ".join(f"{k} {v}" for k, v in routes.most_common()))
     coverage = [r["fact_coverage"] for r in ran if r["fact_coverage"] is not None]
     if coverage:
-        out.append(f"Fact coverage (keyword proxy, answer items): mean {mean(coverage):.2f}")
+        how = "LLM judge" if config.get("judged") else "keyword proxy"
+        out.append(f"Fact coverage ({how}, answer items): mean {mean(coverage):.2f}")
     leaks = [r for r in ran if r["violations"]]
     out.append(f"Forbidden terms found in replies: {len(leaks)} items")
     if ran:
@@ -62,11 +63,18 @@ def summarize(config: Row, rows: list[Row]) -> str:
                 f" violations={r['violations']}",
             ]
     unchecked = sum(len(r["unchecked"]) for r in ran)
-    out += [
-        "",
-        f"Not checked yet (needs the LLM judge): {unchecked} descriptive forbidden-content "
-        "criteria, and whether replies state the must_include facts correctly.",
-    ]
+    if config.get("judged"):
+        out += [
+            "",
+            f"Judged by {config['judge_model']}, the same model that wrote the replies, so expect "
+            "some bias. Items the judge looked at are marked in results.jsonl.",
+        ]
+    else:
+        out += [
+            "",
+            f"Not checked yet (needs the LLM judge): {unchecked} descriptive forbidden-content "
+            "criteria, and whether replies state the must_include facts correctly.",
+        ]
     if skipped:
         out.append("Skipped: " + ", ".join(f"{r['id']}" for r in skipped))
     return "\n".join(out)

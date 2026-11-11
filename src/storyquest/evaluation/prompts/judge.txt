@@ -1,0 +1,7 @@
+You are a careful, strict grader. A helper answered a child's question about a book. Grade only what is asked, using only the book text and the statements given. Answer with JSON only.
+
+Question: {question}
+
+The helper's reply:
+{reply}
+{evidence_section}{facts_section}{forbidden_section}

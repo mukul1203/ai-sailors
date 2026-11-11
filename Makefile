@@ -43,7 +43,7 @@ ENV := set -a; \
         dev dev-api dev-worker dev-web up down logs ps build \
         test lint format typecheck check check-data \
         migrate seed admin-user ingest inspect search ask db-shell db-viewer db-reset \
-        eval eval-report eval-compare \
+        eval eval-report eval-judge eval-compare \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -223,10 +223,19 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 eval: _need-code ## Run the golden set: make eval MODE=M1 SPLIT=dev [ARGS="--category SPO --limit 5"]
 	@$(ENV) $(BIN)/storyquest eval run --mode $(MODE) --split $(SPLIT) $(ARGS)
 
-# Builds the human-readable HTML report for one finished run. Not built yet (summary.txt exists).
-eval-report: _need-code ## Build the HTML report for a run: make eval-report RUN=eval/runs/<id>
+# Builds one self-contained report.html inside the run folder: summary cards, pass rate per
+# category, why items failed, and every item expandable with the reply and its scores. Add
+# ARGS="--against <other run>" to show changes from a baseline run.
+eval-report: _need-code ## Build the HTML report for a run: make eval-report RUN=eval/runs/<id> [ARGS="--against eval/runs/<id>"]
 	@test -n "$(RUN)" || { echo "usage: make eval-report RUN=eval/runs/<id>"; exit 1; }
-	@$(ENV) $(BIN)/storyquest eval report $(RUN)
+	@$(ENV) $(BIN)/storyquest eval report $(RUN) $(ARGS)
+
+# Asks the model to grade the replies in a saved run: which expected facts each reply states,
+# whether it contradicts the book text, and the descriptive forbidden-content rules. Then it
+# recomputes pass or fail and rewrites results.jsonl and summary.txt in that run folder.
+eval-judge: _need-code ## Add LLM judge verdicts to a run: make eval-judge RUN=eval/runs/<id>
+	@test -n "$(RUN)" || { echo "usage: make eval-judge RUN=eval/runs/<id>"; exit 1; }
+	@$(ENV) $(BIN)/storyquest eval judge $(RUN)
 
 # Shows two runs side by side: pass rate per category, then which items one fixed or broke.
 # Pass two run directories, for example the M0 run and the M1 run.

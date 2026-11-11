@@ -19,7 +19,7 @@ storyquest = "storyquest.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-storyquest = ["stores/migrations/*/*.sql", "agent/prompts/*.txt"]
+storyquest = ["stores/migrations/*/*.sql", "agent/prompts/*.txt", "evaluation/prompts/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -35,6 +35,9 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/storyquest/evaluation/html_report.py" = ["E501"]  # long HTML and CSS strings
 
 [tool.mypy]
 strict = true

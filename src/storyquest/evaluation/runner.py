@@ -13,7 +13,8 @@ from storyquest.agent.context import AgentContext
 from storyquest.agent.modes import Mode
 from storyquest.agent.turn import run_turn
 from storyquest.evaluation.items import GoldItem
-from storyquest.evaluation.scoring import score_item
+from storyquest.evaluation.judge import judge_item, needs_judging
+from storyquest.evaluation.scoring import decide, score_item
 from storyquest.ingestion.pipeline import load_cleaned
 from storyquest.ingestion.text import Cleaned
 from storyquest.stores.search import search_chunks
@@ -108,6 +109,8 @@ def make_config(
         "book": ctx.book.id,
         "book_sha256": ctx.book.content_sha256[:12],
         "golden_sha256": hashlib.sha256(golden_path.read_bytes()).hexdigest()[:12],
+        "golden_path": str(golden_path),
+        "judged": False,
         "git_commit": _git_commit(),
         "retrieval_top_k": s.retrieval_top_k,
         "generation_max_tokens": s.generation_max_tokens,
@@ -120,10 +123,70 @@ def write_run(root: Path, config: Row, rows: list[Row], summary: str) -> Path:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir = root / f"{config['mode']}-{config['split']}-{stamp}"
     run_dir.mkdir(parents=True)
+    save_run(run_dir, config, rows, summary)
+    return run_dir
+
+
+def save_run(run_dir: Path, config: Row, rows: list[Row], summary: str) -> None:
     (run_dir / "config.json").write_text(json.dumps(config, indent=2) + "\n")
     (run_dir / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     (run_dir / "summary.txt").write_text(summary + "\n")
-    return run_dir
+
+
+def judge_rows(
+    ctx: AgentContext,
+    items: dict[str, GoldItem],
+    rows: list[Row],
+    *,
+    log: Callable[[str], None],
+) -> list[Row]:
+    """Add the LLM judge's verdict to rows that need it and recompute pass or fail."""
+    cleaned = load_cleaned(ctx.settings.data_dir, ctx.book)
+    out: list[Row] = []
+    for row in rows:
+        item = items.get(row["id"])
+        if row["skipped"] or item is None or not needs_judging(item, row["unchecked"]):
+            out.append(row)
+            continue
+        verdict = judge_item(ctx.llm, item, row["reply"], cleaned, row["unchecked"])
+        facts = verdict.facts_stated
+        coverage = sum(facts) / len(facts) if facts else row["fact_coverage"]
+        passed, label = decide(
+            item,
+            row["route"],
+            row["behavior_ok"],
+            [*row["violations"], *verdict.forbidden_found],
+            coverage,
+            False,  # the 8B judge over-flags contradictions, so it is a report hint only
+            row["retrieval_hit"],
+        )
+        log(f"judged {item.id:8} {'pass' if passed else f'FAIL {label}'}")
+        out.append(
+            {
+                **row,
+                "fact_coverage_proxy": row.get("fact_coverage_proxy", row["fact_coverage"]),
+                "fact_coverage": coverage,
+                "judge": {
+                    "facts": facts,
+                    "fact_details": [
+                        {"fact": f, "stated": s, "quote": q if s else ""}
+                        for f, s, q in zip(
+                            item.must_include,
+                            facts,
+                            verdict.fact_quotes or [""] * len(facts),
+                            strict=False,
+                        )
+                    ],
+                    "forbidden_found": verdict.forbidden_found,
+                    "contradicts_book": verdict.contradicts_book,
+                    "contradiction_quote": verdict.contradiction_quote,
+                    "evidence": verdict.evidence,
+                },
+                "passed": passed,
+                "label": label,
+            }
+        )
+    return out
 
 
 def load_run(run_dir: Path) -> tuple[Row, list[Row]]:

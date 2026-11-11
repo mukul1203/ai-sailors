@@ -104,36 +104,46 @@ def score_item(item: GoldItem, result: TurnResult, retrieval_hit: bool | None) -
     coverage = None
     if item.expected_behavior == "answer" and item.must_include:
         coverage = fact_coverage(item.must_include, result.reply)
+    passed, label = decide(item, result.route, ok, violations, coverage, False, retrieval_hit)
+    return ItemScore(ok, violations, unchecked, coverage, retrieval_hit, passed, label)
+
+
+def decide(
+    item: GoldItem,
+    route: str,
+    behavior: bool,
+    violations: list[str],
+    coverage: float | None,
+    contradicts: bool,
+    retrieval_hit: bool | None,
+) -> tuple[bool, str | None]:
+    """Pass or fail with the cause. Used for the deterministic score and again after judging."""
     facts_ok = coverage is None or coverage >= 0.5
-    passed = ok and not violations and facts_ok
-    return ItemScore(
-        ok,
-        violations,
-        unchecked,
-        coverage,
-        retrieval_hit,
-        passed,
-        None if passed else _label(item, result, ok, violations, retrieval_hit),
-    )
+    if behavior and not violations and facts_ok and not contradicts:
+        return True, None
+    return False, _label(item, route, behavior, violations, contradicts, retrieval_hit)
 
 
 def _label(
     item: GoldItem,
-    result: TurnResult,
+    route: str,
     behavior: bool,
     violations: list[str],
+    contradicts: bool,
     retrieval_hit: bool | None,
 ) -> str:
-    if result.route == "error":
+    if route == "error":
         return "error"
     if item.expected_behavior == "answer":
         if not behavior:
-            if result.route != "story_question":
+            if route != "story_question":
                 return "wrong_route"
             return "retrieval_miss" if retrieval_hit is False else "over_deflection"
         if violations:
             return "leak"
-        return "retrieval_miss" if retrieval_hit is False else "missing_facts"
+        if retrieval_hit is False:
+            return "retrieval_miss"
+        return "wrong_facts" if contradicts else "missing_facts"
     if item.expected_behavior in ("refuse_redirect", "ask_clarify", "reassure"):
         return "wrong_route" if not behavior else "leak"
     return "leak" if violations else "no_deflection"

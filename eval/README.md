@@ -3,6 +3,37 @@
 Source book: *The Jungle Book* (Kipling), Project Gutenberg plain text at [books/236-the-jungle-book/raw.txt](books/236-the-jungle-book/raw.txt). Line numbers in this plan and in the JSONL refer to that exact file; `make check-data` verifies its hash.
 Capstone requirement: 60–100 realistic queries with gold answers, written and frozen **before** agent code (Track B, Week 1 gate).
 
+## 0. Running the evaluation
+
+Once: `make setup`, put your secrets in `.env` and the certificate in `certs/ca.crt` (`make doctor` checks), then load the book:
+
+```
+make seed
+make ingest BOOK=236 ARGS="--spine eval/spine_mowgli_brothers.json"
+```
+
+Each evaluation, in this order:
+
+```
+make eval MODE=M0 SPLIT=dev        # run the golden set through the agent; prints a summary
+make eval MODE=M1 SPLIT=dev
+ls eval/runs                       # run folders are named <mode>-<split>-<YYYYMMDD-HHMMSS>
+make eval-judge RUN=eval/runs/M1-dev-<timestamp>      # optional: LLM judge for facts and descriptive rules
+make eval-report RUN=eval/runs/M1-dev-<timestamp> ARGS="--against eval/runs/M0-dev-<timestamp>"
+open eval/runs/M1-dev-<timestamp>/report.html         # macOS; otherwise open the file in a browser
+make eval-compare RUNS="eval/runs/M0-dev-<timestamp> eval/runs/M1-dev-<timestamp>"   # text version
+```
+
+Replace `<timestamp>` with a folder name from `ls eval/runs` (every `make eval` also prints `Saved to ...`). To pick the newest run of a mode in the shell: `M1=$(ls -d eval/runs/M1-dev-* | tail -1)`.
+
+Notes:
+
+- Each run folder holds `summary.txt`, `results.jsonl`, `config.json` and, after `eval-report`, `report.html`. Run folders are git-ignored.
+- Use the `dev` split while tuning. `SPLIT=test` is for reporting only and prints a reminder.
+- `ARGS="--category SPO --limit 5"` runs a subset. Model answers are cached, so repeating a run is fast; add `--no-cache` to force fresh calls.
+- Items that need a full quest session are skipped and listed in the report.
+- The judge is the same 8B model as the agent, so its verdicts are noisy: use them to compare modes and spot-check items in the report. Details are in [docs/design/07-eval-harness.md](../docs/design/07-eval-harness.md). Every threshold and rule that decides a result is listed in [docs/design/10-scoring-reference.md](../docs/design/10-scoring-reference.md).
+
 ## 1. Purpose
 
 - Fixed yardstick to compare every agent change (prompts, chunking, retrieval, critic, model settings).
@@ -40,8 +71,8 @@ One JSON object per line in `eval/golden_v1.jsonl` (file to be created when item
 | `position` | Beat reached, `B1`–`B5` |
 | `input` | Child text, or for corpus-injection items, the poisoned passage and a benign child question |
 | `expected_behavior` | `answer`, `deflect_in_character`, `refuse_redirect`, `ask_clarify`, `reassure`, `advance_quest` |
-| `must_include` | Facts the answer has to contain |
-| `must_not_include` | Leaks, Disney content, adult vocabulary, invented facts |
+| `must_include` | Facts (meanings, not exact words) the answer has to contain. Keyword proxy by default, LLM judge with `eval-judge` |
+| `must_not_include` | Leaks, Disney content, adult vocabulary, invented facts. Literal words are matched in code; descriptions are checked by the judge only |
 | `evidence` | Short book quote and line range or chapter, used to verify the gold answer |
 | `gold_chunk_hint` | Text the retriever should surface (for recall@k) |
 | `notes` | Why the item exists |
