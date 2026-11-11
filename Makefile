@@ -215,17 +215,22 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 
 ##@ Evaluation
 
-# The eval targets run the golden set against the agent in a mode and build reports. Not built yet.
-eval: _need-code ## Run the golden set: make eval MODE=M1 SPLIT=dev
-	@$(ENV) $(BIN)/storyquest eval run --mode $(MODE) --split $(SPLIT)
+# Runs the golden set through the agent in mode MODE (M0 or M1) on SPLIT (dev, test or all), one
+# item at a time, and scores each reply without a model: right kind of behaviour, forbidden words,
+# a keyword proxy for the expected facts, and whether retrieval found the gold passage. Saves
+# results.jsonl, config.json and summary.txt under eval/runs/<mode>-<split>-<time>/. Items that
+# need a full quest session are skipped. The model's answers are cached, so re-runs are fast.
+eval: _need-code ## Run the golden set: make eval MODE=M1 SPLIT=dev [ARGS="--category SPO --limit 5"]
+	@$(ENV) $(BIN)/storyquest eval run --mode $(MODE) --split $(SPLIT) $(ARGS)
 
-# Builds the human-readable HTML report for one finished run.
+# Builds the human-readable HTML report for one finished run. Not built yet (summary.txt exists).
 eval-report: _need-code ## Build the HTML report for a run: make eval-report RUN=eval/runs/<id>
 	@test -n "$(RUN)" || { echo "usage: make eval-report RUN=eval/runs/<id>"; exit 1; }
 	@$(ENV) $(BIN)/storyquest eval report $(RUN)
 
-# Shows several runs side by side (for example M0 against M1).
-eval-compare: _need-code ## Compare runs side by side: make eval-compare RUNS="eval/runs/a eval/runs/b"
+# Shows two runs side by side: pass rate per category, then which items one fixed or broke.
+# Pass two run directories, for example the M0 run and the M1 run.
+eval-compare: _need-code ## Compare two runs: make eval-compare RUNS="eval/runs/a eval/runs/b"
 	@test -n "$(RUNS)" || { echo "usage: make eval-compare RUNS=\"eval/runs/a eval/runs/b\""; exit 1; }
 	@$(ENV) $(BIN)/storyquest eval compare $(RUNS)
 

@@ -16,7 +16,9 @@ MANIFEST = BOOK_DIR / "book.yaml"
 CATEGORIES = {"CAN", "CHR", "SPO", "OOC", "DIS", "FLO", "SAF", "INJ", "PII", "MAL"}
 SPLITS = {"dev", "test"}
 POSITIONS = {"B1", "B2", "B3", "B4", "B5"}
-BEHAVIORS = {"answer", "deflect_in_character", "refuse_redirect", "ask_clarify", "advance_quest"}
+BEHAVIORS = {
+    "answer", "deflect_in_character", "refuse_redirect", "ask_clarify", "advance_quest", "reassure"
+}  # fmt: skip
 REQUIRED = {
     "id", "category", "split", "position", "input", "expected_behavior",
     "must_include", "must_not_include", "evidence", "gold_chunk_hint", "notes",

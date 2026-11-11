@@ -1,0 +1,103 @@
+"""Human-readable text reports for one run and for two runs side by side."""
+
+from collections import Counter
+from statistics import mean
+
+from storyquest.evaluation.runner import Row, pass_rates
+
+
+def _pct(a: int, b: int) -> str:
+    return f"{a}/{b} ({round(100 * a / b)}%)" if b else "n/a"
+
+
+def summarize(config: Row, rows: list[Row]) -> str:
+    ran = [r for r in rows if not r["skipped"]]
+    skipped = [r for r in rows if r["skipped"]]
+    passed = sum(bool(r["passed"]) for r in ran)
+    out = [
+        f"Run {config['mode']} | split {config['split']} | {len(ran)} run, {len(skipped)} skipped"
+        f" | model {config['model']} | commit {config['git_commit']}",
+        f"golden set {config['golden_sha256']} | book {config['book']} ({config['book_sha256']})"
+        f" | top-k {config['retrieval_top_k']}",
+        "",
+        f"Pass rate: {_pct(passed, len(ran))}",
+    ]
+    for cat, (p, n) in pass_rates(rows).items():
+        out.append(f"  {cat}  {_pct(p, n)}")
+
+    with_gold = [r for r in ran if r["retrieval_hit"] is not None]
+    hits = sum(bool(r["retrieval_hit"]) for r in with_gold)
+    out += [
+        "",
+        f"Retrieval: gold passage in the top {config['retrieval_top_k']} "
+        f"for {_pct(hits, len(with_gold))}",
+    ]
+    routes = Counter(r["route"] for r in ran)
+    out.append("Routes: " + ", ".join(f"{k} {v}" for k, v in routes.most_common()))
+    coverage = [r["fact_coverage"] for r in ran if r["fact_coverage"] is not None]
+    if coverage:
+        out.append(f"Fact coverage (keyword proxy, answer items): mean {mean(coverage):.2f}")
+    leaks = [r for r in ran if r["violations"]]
+    out.append(f"Forbidden terms found in replies: {len(leaks)} items")
+    if ran:
+        out.append(
+            f"Per item: {mean(r['calls'] for r in ran):.1f} model calls, "
+            f"{mean(r['prompt_tokens'] for r in ran):.0f} prompt + "
+            f"{mean(r['completion_tokens'] for r in ran):.0f} completion tokens, "
+            f"{mean(r['latency_s'] for r in ran):.1f}s"
+        )
+
+    labels = Counter(r["label"] for r in ran if not r["passed"])
+    if labels:
+        out += ["", "Failures by cause: " + ", ".join(f"{k} {v}" for k, v in labels.most_common())]
+        out.append("")
+        for r in ran:
+            if r["passed"]:
+                continue
+            reply = " ".join(r["reply"].split())
+            out += [
+                f"  {r['id']} [{r['label']}] {r['position']} {r['input'][:70]!r}",
+                f"      expected {r['expected']}; route {r['route']}; reply: {reply[:150]}",
+                f"      retrieval_hit={r['retrieval_hit']} facts={r['fact_coverage']}"
+                f" violations={r['violations']}",
+            ]
+    unchecked = sum(len(r["unchecked"]) for r in ran)
+    out += [
+        "",
+        f"Not checked yet (needs the LLM judge): {unchecked} descriptive forbidden-content "
+        "criteria, and whether replies state the must_include facts correctly.",
+    ]
+    if skipped:
+        out.append("Skipped: " + ", ".join(f"{r['id']}" for r in skipped))
+    return "\n".join(out)
+
+
+def compare(a: tuple[Row, list[Row]], b: tuple[Row, list[Row]]) -> str:
+    (ca, ra), (cb, rb) = a, b
+    na, nb = f"{ca['mode']} ({ca['split']})", f"{cb['mode']} ({cb['split']})"
+    rates_a, rates_b = pass_rates(ra), pass_rates(rb)
+    out = [f"{na}  vs  {nb}", "", f"{'':8}{na:>18}{nb:>18}"]
+    for cat in rates_a.keys() | rates_b.keys():
+        pa, pb = rates_a.get(cat, (0, 0)), rates_b.get(cat, (0, 0))
+        out.append(f"{cat:8}{_pct(*pa):>18}{_pct(*pb):>18}")
+    tot_a = (sum(p for p, _ in rates_a.values()), sum(n for _, n in rates_a.values()))
+    tot_b = (sum(p for p, _ in rates_b.values()), sum(n for _, n in rates_b.values()))
+    out.append(f"{'overall':8}{_pct(*tot_a):>18}{_pct(*tot_b):>18}")
+
+    by_id_a = {r["id"]: r for r in ra if not r["skipped"]}
+    by_id_b = {r["id"]: r for r in rb if not r["skipped"]}
+    fixed, regressed = [], []
+    for item_id in by_id_a.keys() & by_id_b.keys():
+        was, now = bool(by_id_a[item_id]["passed"]), bool(by_id_b[item_id]["passed"])
+        if not was and now:
+            fixed.append(item_id)
+        elif was and not now:
+            regressed.append(item_id)
+    out += [
+        "",
+        f"Pass in {cb['mode']} but not in {ca['mode']}: " + (", ".join(sorted(fixed)) or "none"),
+    ]
+    out.append(
+        f"Pass in {ca['mode']} but not in {cb['mode']}: " + (", ".join(sorted(regressed)) or "none")
+    )
+    return "\n".join(out)

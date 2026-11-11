@@ -1,8 +1,8 @@
 from collections.abc import Callable
 
 import pytest
-from agent_helpers import FailingLLM, ScriptedLLM
 
+from llm_helpers import FailingLLM, ScriptedLLM
 from storyquest.agent.context import AgentContext
 from storyquest.agent.modes import get_mode
 from storyquest.agent.replies import REPLIES

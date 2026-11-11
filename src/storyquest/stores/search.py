@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from storyquest.domain.position import Position
 
-_STOPWORDS = frozenset(
+STOPWORDS = frozenset(
     "a an and are as at be but by did do does for from had has have he her him his how i if in is "
     "it its me my no not of on or our she so than that the their them then there they this to "
     "us was we were what when where which who why will with you your s t".split()
@@ -29,7 +29,7 @@ def to_match_query(text: str) -> str | None:
     """Turn free text into a safe FTS5 query of quoted terms joined by OR."""
     seen: dict[str, None] = {}
     for token in re.findall(r"\w+", text.lower()):
-        if token not in _STOPWORDS:
+        if token not in STOPWORDS:
             seen[token] = None
     if not seen:
         return None

@@ -15,6 +15,9 @@ from storyquest.agent.turn import run_turn
 from storyquest.catalog.importer import CatalogError, import_books
 from storyquest.config import Settings, load_settings
 from storyquest.domain.position import Position
+from storyquest.evaluation.items import GoldItem, load_items
+from storyquest.evaluation.report import compare, summarize
+from storyquest.evaluation.runner import load_run, make_config, run_eval, write_run
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.inspect import render_book, render_hits
 from storyquest.ingestion.pipeline import load_cleaned, run_deterministic
@@ -118,6 +121,46 @@ def _ask(args: argparse.Namespace) -> int:
     return 0
 
 
+def _select_items(args: argparse.Namespace, items: list[GoldItem]) -> list[GoldItem]:
+    if args.split != "all":
+        items = [i for i in items if i.split == args.split]
+    if args.category:
+        items = [i for i in items if i.category == args.category.upper()]
+    if args.ids:
+        wanted = set(args.ids.split(","))
+        items = [i for i in items if i.id in wanted]
+    return items[: args.limit] if args.limit else items
+
+
+def _eval_run(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    golden = Path(args.golden) if args.golden else settings.root / "eval" / "golden_v1.jsonl"
+    items = _select_items(args, load_items(golden))
+    if not items:
+        print("error: no items match those filters", file=sys.stderr)
+        return 1
+    if args.split in ("test", "all"):
+        print("note: the test split is for reporting; do not tune against it")
+    try:
+        llm = build_llm(settings, use_cache=not args.no_cache)
+        ctx = load_context(conn, llm, settings, args.book)
+        mode = get_mode(args.mode)
+    except (LLMError, AgentError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    rows = run_eval(ctx, items, mode, log=print)
+    config = make_config(ctx, mode, args.split, golden, rows)
+    summary = summarize(config, rows)
+    run_dir = write_run(settings.root / "eval" / "runs", config, rows, summary)
+    print("\n" + summary + f"\n\nSaved to {run_dir.relative_to(settings.root)}")
+    return 0
+
+
+def _eval_compare(args: argparse.Namespace) -> int:
+    print(compare(load_run(Path(args.run_a)), load_run(Path(args.run_b))))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="storyquest")
     parser.add_argument("--version", action="version", version=f"storyquest {__version__}")
@@ -169,6 +212,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask_agent.add_argument("--verbose", action="store_true", help="show the exact prompts")
     ask_agent.add_argument("--no-cache", action="store_true")
 
+    ev = sub.add_parser("eval", help="Evaluate the agent on the golden set").add_subparsers(
+        dest="eval_command", required=True
+    )
+    run = ev.add_parser("run", help="Run the golden set through the agent")
+    run.add_argument("--mode", default="M1")
+    run.add_argument("--split", default="dev", choices=["dev", "test", "all"])
+    run.add_argument("--category", help="only this category, e.g. SPO")
+    run.add_argument("--ids", help="comma-separated item ids")
+    run.add_argument("--limit", type=int, help="only the first N matching items")
+    run.add_argument("--book", type=int, default=236)
+    run.add_argument("--golden", help="path to a golden-set file")
+    run.add_argument("--no-cache", action="store_true")
+    cmp = ev.add_parser("compare", help="Compare two saved runs")
+    cmp.add_argument("run_a")
+    cmp.add_argument("run_b")
+
     args = parser.parse_args(argv)
     try:
         return _dispatch(args)
@@ -194,4 +253,6 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _search(args)
     if args.command == "ask":
         return _ask(args)
+    if args.command == "eval":
+        return _eval_run(args) if args.eval_command == "run" else _eval_compare(args)
     return 2

@@ -58,6 +58,17 @@ Dev and test splits are reported separately; test is shown only in the final rep
 - The golden set cites line numbers of the committed Jungle Book fixture; the runner checks the book's hash first.
 - With one active request per key, an 80-item run is serial and several calls per item in later modes. Run evals when developers are not using the key, and avoid parallel runs.
 
+## Built so far (text runner, deterministic checks)
+
+`make eval MODE=M1 SPLIT=dev` runs every non-skipped item through the agent and saves `config.json`, `results.jsonl` and `summary.txt` under `eval/runs/<mode>-<split>-<time>/`. `make eval-compare RUNS="<run a> <run b>"` shows two runs side by side.
+
+- **Skipped items:** those marked `skip` in the golden file need a full quest session (choice clicks, idle time, session cap) or an injected poisoned passage, so they wait for step 8.
+- **Behaviour check:** answered, deflected, refused, asked to clarify or reassured, judged from the route and reply.
+- **Forbidden words:** literal `must_not_include` entries are matched as whole words. A term the child used themselves may be repeated. Entries that describe content (for example "invented smells") are counted as unchecked.
+- **Facts:** a keyword proxy only. It misses correct answers that use different words, so treat fact coverage as a lower bound until the LLM judge exists.
+- **Retrieval:** whether plain retrieval put the gold lines in the top passages, computed without the model.
+- **Failure causes:** `retrieval_miss`, `over_deflection`, `wrong_route`, `missing_facts`, `no_deflection`, `leak`, `error`.
+
 ## Order of work
 
 1. Runner and deterministic checks.

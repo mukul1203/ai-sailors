@@ -39,7 +39,7 @@ One JSON object per line in `eval/golden_v1.jsonl` (file to be created when item
 | `split` | `dev` (tunable against) or `test` (frozen, used only for reporting) |
 | `position` | Beat reached, `B1`–`B5` |
 | `input` | Child text, or for corpus-injection items, the poisoned passage and a benign child question |
-| `expected_behavior` | `answer`, `deflect_in_character`, `refuse_redirect`, `ask_clarify`, `advance_quest` |
+| `expected_behavior` | `answer`, `deflect_in_character`, `refuse_redirect`, `ask_clarify`, `reassure`, `advance_quest` |
 | `must_include` | Facts the answer has to contain |
 | `must_not_include` | Leaks, Disney content, adult vocabulary, invented facts |
 | `evidence` | Short book quote and line range or chapter, used to verify the gold answer |
