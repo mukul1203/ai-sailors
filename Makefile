@@ -189,11 +189,14 @@ db-shell: ## Open sqlite3 on a local database: make db-shell DB=content|app
 	@$(ENV) sqlite3 "$${DATA_DIR:-var}/$(DB).db"
 
 # Starts Datasette, a read-only web page for browsing the tables and running SELECT queries.
+# Opens whichever of content.db and app.db exist in DATA_DIR (or DATA=<dir>).
 db-viewer: ## Browse local databases in Datasette (DATA=dir to point at a snapshot)
-	@$(ENV) d="$(DATA)"; d="$${d:-$$DATA_DIR}"; \
+	@$(ENV) d="$(DATA)"; d="$${d:-$$DATA_DIR}"; files=""; \
 	  test -x $(BIN)/datasette || { echo "datasette not installed: run make setup"; exit 1; }; \
-	  echo "Viewer: http://localhost:$(VIEWER_PORT)"; \
-	  $(BIN)/datasette serve "$$d/content.db" "$$d/app.db" --port $(VIEWER_PORT)
+	  for f in content app; do [ -f "$$d/$$f.db" ] && files="$$files $$d/$$f.db"; done; \
+	  [ -n "$$files" ] || { echo "No databases in $$d yet: run make seed first"; exit 1; }; \
+	  echo "Viewer: http://localhost:$(VIEWER_PORT)  (Ctrl-C to stop)"; \
+	  $(BIN)/datasette serve $$files --port $(VIEWER_PORT)
 
 # Asks for confirmation, then deletes content.db and app.db. Uploaded books and the LLM cache
 # stay; re-create the data with `make seed` and `make ingest`.
