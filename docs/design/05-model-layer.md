@@ -45,10 +45,10 @@ Priorities when requests contend: live child turns first, then eval runs, then i
 ```yaml
 llm:
   provider: openai_compatible      # or: fake
-  base_url: https://103.42.50.41:<port>/v1   # port depends on the group
+  base_url_env: LLM_BASE_URL        # secret (IP and port), read from .env
   model: Qwen/Qwen3-8B
   api_key_env: LLM_API_KEY          # secret, read from .env; everything else here comes from config.env
-  ca_cert_path: /certs/<group-ca>.crt   # keep TLS verification on
+  ca_cert_path: /certs/ca.crt       # git-ignored file; keep TLS verification on
   max_concurrency: 1
 embedder:
   provider: none        # later: local or hosted

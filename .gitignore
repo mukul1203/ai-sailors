@@ -1,4 +1,5 @@
 .env
+certs/
 .venv/
 __pycache__/
 *.pyc
@@ -10,3 +11,4 @@ web/dist/
 var/
 eval/runs/
 .DS_Store
+*.egg-info/

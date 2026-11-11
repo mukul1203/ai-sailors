@@ -16,7 +16,7 @@ ai-sailors/
 ├── pyproject.toml                     Python package, dependencies, tool config
 ├── Dockerfile                         multi-stage: build web, then slim Python image
 ├── docker-compose.yml                 app, worker, dbviewer (profile: admin)
-├── certs/                             model endpoint CA certificate (public)
+├── certs/                             model endpoint CA certificate (git-ignored, certs/ca.crt)
 ├── docs/                     exists
 ├── eval/                     exists   everything evaluation-related (below)
 ├── src/storyquest/                    backend package

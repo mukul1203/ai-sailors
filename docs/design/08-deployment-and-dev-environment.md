@@ -29,23 +29,23 @@ Two kinds of files, strictly separated.
 | Variable | Purpose |
 |---|---|
 | `LLM_API_KEY` | Group model key |
+| `LLM_BASE_URL` | Model endpoint URL (IP and port), treated as a secret |
 | `SESSION_SECRET` | Signing secret for sessions |
+
+The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignored) on each developer machine, and copy it to the server's `certs/` once. It is mounted read-only into the container. `make deploy` syncs `certs/` from your machine if the folder exists.
 
 **Configuration: `config.env` (committed).** Non-secret settings, safe to read in git.
 
 | Variable | Purpose |
 |---|---|
 | `LLM_PROVIDER` | `openai_compatible` (default) or `fake` |
-| `LLM_BASE_URL` | Group URL, e.g. `https://103.42.50.41:<port>/v1` |
 | `LLM_MODEL` | `Qwen/Qwen3-8B` |
-| `LLM_CA_CERT_PATH` | Path to the group CA certificate; TLS verification stays on |
+| `LLM_CA_CERT_PATH` | Path to the CA certificate (`certs/ca.crt`); TLS verification stays on |
 | `LLM_MAX_CONCURRENCY` | `1` |
-| `DATA_DIR` | `var` locally (git-ignored; `data/` holds committed reference spines), `/data` in containers |
+| `DATA_DIR` | `var` locally (git-ignored), `/data` in containers |
 | `DBVIEWER_PORT` | Port for the DB viewer |
 
 Per-environment differences go into a small committed override file, for example `config.prod.env` for the server (paths inside the container, for instance). Compose loads them in order: `config.env`, then the override for that environment, then `.env`. A later file wins, and secrets always come from `.env`.
-
-The CA certificate is a public certificate, not a secret, so it may live in the repo (for example `certs/`) and be mounted read-only into the container. Whether to commit it is a team call; the path is configuration either way.
 
 ## Running locally
 
@@ -125,7 +125,7 @@ Notes:
 ## Operations checklist (MVP)
 
 - [ ] `config.env` and the production override committed; `.env.example` lists secret names only; `.env` ignored
-- [ ] CA certificate mounted, path set in config
+- [ ] CA certificate in `certs/ca.crt` (git-ignored) locally and on the server
 - [ ] Admin user created by CLI
 - [ ] `/healthz` and log access working
 - [ ] DB viewer reachable through the SSH tunnel only, against both local and remote databases

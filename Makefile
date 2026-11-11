@@ -53,8 +53,9 @@ doctor: ## Check tools, secrets, CA certificate and config
 	@for t in python3 docker npm sqlite3 curl ssh rsync; do command -v $$t >/dev/null && echo "ok       $$t" || echo "MISSING  $$t"; done
 	@$(ENV) \
 	  [ -n "$$LLM_API_KEY" ] && echo "ok       LLM_API_KEY is set" || echo "MISSING  LLM_API_KEY (put it in .env)"; \
+	  [ -n "$$LLM_BASE_URL" ] && echo "ok       LLM_BASE_URL is set" || echo "MISSING  LLM_BASE_URL (put it in .env)"; \
 	  [ -f "$$LLM_CA_CERT_PATH" ] && echo "ok       CA certificate at $$LLM_CA_CERT_PATH" || echo "MISSING  CA certificate at $$LLM_CA_CERT_PATH"; \
-	  echo "config   $$LLM_PROVIDER $$LLM_MODEL via $$LLM_BASE_URL"
+	  echo "config   $$LLM_PROVIDER $$LLM_MODEL"
 
 llm-ping: ## Send a tiny request to the model endpoint to verify key, certificate and URL
 	@$(ENV) curl -sS --cacert "$$LLM_CA_CERT_PATH" "$$LLM_BASE_URL/chat/completions" \
