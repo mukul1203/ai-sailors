@@ -42,7 +42,7 @@ ENV := set -a; \
 .PHONY: help setup doctor llm-ping \
         dev dev-api dev-worker dev-web up down logs ps build \
         test lint format typecheck check check-data \
-        migrate seed admin-user ingest inspect search db-shell db-viewer db-reset \
+        migrate seed admin-user ingest inspect search ask db-shell db-viewer db-reset \
         eval eval-report eval-compare \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
@@ -183,6 +183,15 @@ inspect: _need-code _need-book ## Show chapters, beats, chunks: make inspect BOO
 search: _need-code _need-book ## Search as a child: make search BOOK=<id> Q="..." [ARGS="--chapter 0 --beat 1"]
 	@test -n "$(Q)" || { echo "usage: make search BOOK=<id> Q=\"...\" [ARGS=\"--chapter N --beat N\"]"; exit 1; }
 	@$(ENV) $(BIN)/storyquest search $(BOOK) "$(Q)" $(ARGS)
+
+# Asks the story agent one question as a child standing at --chapter/--beat (zero-based), in mode
+# MODE (M0 = plain model, M1 = with retrieved book passages). Sorts the message with a small
+# model call, then (for story questions) retrieves passages up to the child's position, builds the
+# prompt, calls the model and checks the reply. Prints the answer and what happened at each step;
+# add --verbose to ARGS to see the exact prompts, --no-cache to force fresh model calls.
+ask: _need-code _need-book ## Ask the agent: make ask BOOK=<id> Q="..." MODE=M1 [ARGS="--chapter 0 --beat 1 --verbose"]
+	@test -n "$(Q)" || { echo "usage: make ask BOOK=<id> Q=\"...\" [MODE=M0|M1] [ARGS=\"--chapter N --beat N\"]"; exit 1; }
+	@$(ENV) $(BIN)/storyquest ask $(BOOK) "$(Q)" --mode $(MODE) $(ARGS)
 
 # Opens the sqlite3 command-line shell on content.db or app.db for ad hoc SQL.
 db-shell: ## Open sqlite3 on a local database: make db-shell DB=content|app

@@ -30,7 +30,7 @@ Notes:
 - Positions are character offsets into the cleaned text, with chapter index and beat index for cheap filtering.
 - Vectors store the embedder ID and dimension. Switching embedder means a new set of vectors, not a migration.
 - Published beats are immutable per `pipeline_version`. The implemented schema has no `pipeline_version` column yet: it arrives with the first migration that regenerates beats (ingestion, step 7).
-- Built so far: `books`, `chapters`, `beats`, `chunks` and `chunks_fts` (migration `0001_init.sql`). `ingestion_jobs`, `ingestion_steps`, `entities` and `chunk_vectors` come with the steps that need them. Replacing a book's chapters also removes its beats and chunks (cascade).
+- Built so far: `books`, `chapters`, `beats`, `chunks` and `chunks_fts` (migration `0001_init.sql`) and `names` (`0002_names.sql`: proper names with the offset where each first appears). `ingestion_jobs`, `ingestion_steps`, `entities` and `chunk_vectors` come with the steps that need them. Replacing a book's chapters also removes its beats and chunks (cascade).
 
 ## `app.db`
 

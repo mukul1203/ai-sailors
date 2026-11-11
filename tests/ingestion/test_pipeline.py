@@ -92,6 +92,23 @@ def hits(conn: sqlite3.Connection, query: str, beat: int) -> list[int]:
     return [h.beat_idx for h in search_chunks(conn, BOOK, query, Position(0, beat), limit=20)]
 
 
+def test_chapter_titles_are_not_part_of_any_chunk(
+    ingested: tuple[sqlite3.Connection, Settings, IngestReport],
+) -> None:
+    conn, _, _ = ingested
+    chunks = ContentRepo(conn).get_chunks(BOOK, 0)
+    assert not any(c.text.startswith("Mowgli\u2019s Brothers") for c in chunks)
+    assert chunks[0].text.startswith("Now Rann the Kite")
+
+
+def test_a_character_not_yet_met_has_no_passages(
+    ingested: tuple[sqlite3.Connection, Settings, IngestReport],
+) -> None:
+    conn, _, _ = ingested
+    assert hits(conn, "Who is Mowgli?", beat=0) == []
+    assert hits(conn, "Who is Mowgli?", beat=1)
+
+
 def test_spoiler_filter_on_the_real_book(
     ingested: tuple[sqlite3.Connection, Settings, IngestReport],
 ) -> None:

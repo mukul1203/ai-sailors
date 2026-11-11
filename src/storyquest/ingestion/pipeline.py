@@ -11,6 +11,7 @@ from storyquest.domain.book import Book, Chunk
 from storyquest.ingestion.chapters import detect_chapters
 from storyquest.ingestion.chunking import chunk_span
 from storyquest.ingestion.errors import IngestionError
+from storyquest.ingestion.names import find_names
 from storyquest.ingestion.spine import load_spine
 from storyquest.ingestion.text import Cleaned, clean
 from storyquest.stores.content_repo import ContentRepo
@@ -22,6 +23,7 @@ class IngestReport:
     story_chapters: int
     beats: int
     chunks: int
+    names: int
 
 
 def load_cleaned(data_dir: Path, book: Book) -> Cleaned:
@@ -61,6 +63,10 @@ def run_deterministic(
         repo.replace_chapters(book_id, chapters)
         log("         chapter list changed: stored chapters replaced (beats and chunks cleared)")
 
+    names = find_names(cleaned.text, start=chapters[0].start_char if chapters else 0)
+    repo.replace_names(book_id, names)
+    log(f"names    {len(names)} proper names found, e.g. {', '.join(list(names)[:5])}")
+
     if spine_path is not None:
         chapter_idx, spine_beats = load_spine(spine_path, cleaned, chapters)
         repo.replace_beats(book_id, chapter_idx, spine_beats)
@@ -71,10 +77,11 @@ def run_deterministic(
     for chapter in stories:
         beats = repo.get_beats(book_id, chapter.idx)
         total_beats += len(beats)
+        heading_end = cleaned.text.find("\n", chapter.start_char) + 1  # the title is not story text
         for beat in beats:
             spans = chunk_span(
                 cleaned.text,
-                beat.start_char,
+                max(beat.start_char, heading_end),
                 beat.end_char,
                 target=settings.chunk_target_chars,
                 max_len=settings.chunk_max_chars,
@@ -85,4 +92,4 @@ def run_deterministic(
             )
     repo.replace_chunks(book_id, chunks)
     log(f"chunks   {len(chunks)} written for {total_beats} beats (chapters with no beats skipped)")
-    return IngestReport(len(chapters), len(stories), total_beats, len(chunks))
+    return IngestReport(len(chapters), len(stories), total_beats, len(chunks), len(names))

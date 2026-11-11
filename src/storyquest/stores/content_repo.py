@@ -104,6 +104,22 @@ class ContentRepo:
         )
         return [_beat(r) for r in rows]
 
+    # names
+
+    def replace_names(self, book_id: int, names: dict[str, int]) -> None:
+        with transaction(self._conn):
+            self._conn.execute("DELETE FROM names WHERE book_id = ?", (book_id,))
+            self._conn.executemany(
+                "INSERT INTO names (book_id, name, first_char) VALUES (?, ?, ?)",
+                [(book_id, name, offset) for name, offset in names.items()],
+            )
+
+    def get_names(self, book_id: int) -> dict[str, int]:
+        rows = self._conn.execute(
+            "SELECT name, first_char FROM names WHERE book_id = ?", (book_id,)
+        )
+        return {r["name"]: r["first_char"] for r in rows}
+
     # chunks
 
     def replace_chunks(self, book_id: int, chunks: list[Chunk]) -> None:

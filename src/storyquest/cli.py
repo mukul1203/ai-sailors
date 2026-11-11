@@ -8,6 +8,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from storyquest import __version__
+from storyquest.agent.context import AgentError, load_context
+from storyquest.agent.modes import get_mode
+from storyquest.agent.render import render_turn
+from storyquest.agent.turn import run_turn
 from storyquest.catalog.importer import CatalogError, import_books
 from storyquest.config import Settings, load_settings
 from storyquest.domain.position import Position
@@ -99,6 +103,21 @@ def _search(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ask(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    try:
+        llm = build_llm(settings, use_cache=not args.no_cache)
+        ctx = load_context(conn, llm, settings, args.book)
+        mode = get_mode(args.mode)
+    except (LLMError, AgentError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    position = Position(args.chapter, args.beat)
+    result = run_turn(ctx, args.question, position, mode=mode)
+    print(render_turn(ctx, position, args.question, result, verbose=args.verbose))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="storyquest")
     parser.add_argument("--version", action="version", version=f"storyquest {__version__}")
@@ -141,6 +160,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     srch.add_argument("--beat", type=int, default=999, help="child's beat, zero-based")
     srch.add_argument("--limit", type=int, default=5)
 
+    ask_agent = sub.add_parser("ask", help="Ask the story agent a question as a child")
+    ask_agent.add_argument("book", type=int)
+    ask_agent.add_argument("question")
+    ask_agent.add_argument("--chapter", type=int, default=0, help="child's chapter (zero-based)")
+    ask_agent.add_argument("--beat", type=int, default=0, help="child's beat (zero-based)")
+    ask_agent.add_argument("--mode", default="M1", help="M0 plain model, M1 with retrieval")
+    ask_agent.add_argument("--verbose", action="store_true", help="show the exact prompts")
+    ask_agent.add_argument("--no-cache", action="store_true")
+
     args = parser.parse_args(argv)
     try:
         return _dispatch(args)
@@ -164,4 +192,6 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _inspect(args)
     if args.command == "search":
         return _search(args)
+    if args.command == "ask":
+        return _ask(args)
     return 2

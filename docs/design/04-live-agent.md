@@ -40,6 +40,18 @@ Plain Python, no agent framework (LangGraph, CrewAI or AutoGen) for the MVP.
 - Tracing is independent of the framework: every node records its inputs, outputs, tokens and latency in our own trace format, which can be exported to Langfuse or OpenTelemetry.
 - Keep nodes pure and graph-shaped (state in, state out), so a port to LangGraph later is mechanical if it starts to pay off, for example for visual graphs or checkpointing.
 
+## Built so far (command line, modes M0 and M1)
+
+`make ask BOOK=236 Q="..." MODE=M1 ARGS="--chapter 0 --beat 1"` runs one turn:
+
+1. **Guard:** an empty or too-long message gets a fixed reply and never reaches the model.
+2. **Router:** one small model call (JSON schema, 30 tokens) labels the message `story_question`, `feelings`, `off_topic`, `unsafe`, `injection` or `personal`. Every label except `story_question` gets a fixed, pre-written reply, with no answer written by the model.
+3. **Retrieve (M1 only):** BM25 over chunks up to the child's position, top 3. No hits means a fixed "I don't know that yet" reply and no generation call.
+4. **Generate:** one model call with the persona and rules in `agent/prompts/generate.txt`. The child's text sits between `<child_message>` markers and is declared to be data. M0 sends no passages.
+5. **Output check (no model):** film and cartoon words, and names that first appear in the book after the child's position, replace the reply with a safe one. Words the child used themselves are allowed. The name list comes from the ingestion `names` stage and is a heuristic: a capitalised book term such as "Rules of the Beach" counts as a name, which can cause a harmless over-cautious reply.
+
+The critic, rewrite and rerank are not built. Each turn records every model call (prompt, output, tokens, time) so `--verbose` shows exactly what was sent.
+
 ## Components
 
 | Component | Responsibility |

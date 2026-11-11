@@ -19,7 +19,7 @@ storyquest = "storyquest.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-storyquest = ["stores/migrations/*/*.sql"]
+storyquest = ["stores/migrations/*/*.sql", "agent/prompts/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
