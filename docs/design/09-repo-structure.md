@@ -18,15 +18,11 @@ ai-sailors/
 ├── docker-compose.yml                 app, worker, dbviewer (profile: admin)
 ├── certs/                             model endpoint CA certificate (public)
 ├── docs/                     exists
-├── eval/                     exists
-├── data/spine/               exists   hand-written reference spines
-├── fixtures/                 exists   committed sample inputs for tests and the golden set
-├── scripts/                  exists   small standalone helpers
+├── eval/                     exists   everything evaluation-related (below)
 ├── src/storyquest/                    backend package
 ├── tests/                             backend tests
 ├── web/                               React app
-├── var/                               local runtime data (git-ignored)
-└── runs/                              eval run outputs (git-ignored)
+└── var/                               local runtime data (git-ignored)
 ```
 
 ## Docs
@@ -35,23 +31,24 @@ ai-sailors/
 docs/
 ├── capstone-brief.md         exists
 ├── mvp-prd.md                exists
-├── eval-golden-set.md        exists
 └── design/                   exists   one doc per component, 00 is the overview
 ```
 
-## Eval, data and fixtures
+## Eval
+
+Everything evaluation-related is in one folder.
 
 ```
 eval/
-└── golden_v1.jsonl           exists   frozen when v1 is released; later versions are new files
-data/
-└── spine/
-    └── mowgli_brothers.json  exists
-fixtures/
-└── books/
-    └── 236-the-jungle-book/           exists (Gutenberg ebook 236, verified)
-        ├── raw.txt                    exists; unmodified Gutenberg text
-        └── book.yaml                  exists; metadata used by `catalog import`
+├── README.md                      exists   golden set plan and scoring rules
+├── golden_v1.jsonl                exists   frozen when v1 is released; later versions are new files
+├── spine_mowgli_brothers.json     exists   hand-written reference spine for chapter 1
+├── check_data.py                  exists   validates the files above (`make check-data`)
+├── books/
+│   └── 236-the-jungle-book/       exists   Gutenberg ebook 236, hash verified
+│       ├── raw.txt                unmodified Gutenberg text
+│       └── book.yaml              metadata used by `catalog import`
+└── runs/                          eval run outputs (git-ignored)
 ```
 
 The Jungle Book fixture is the only book in git. All other books are uploaded through the admin view and live in `var/` locally and on the server's data directory.

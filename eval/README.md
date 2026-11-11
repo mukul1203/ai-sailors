@@ -1,6 +1,6 @@
 # Golden Evaluation Set — Plan and Seed Items
 
-Source book: *The Jungle Book* (Kipling), Project Gutenberg plain text at [fixtures/books/236-the-jungle-book/raw.txt](../fixtures/books/236-the-jungle-book/raw.txt). Line numbers in this plan and in the JSONL refer to that exact file; `make check-data` verifies its hash.
+Source book: *The Jungle Book* (Kipling), Project Gutenberg plain text at [books/236-the-jungle-book/raw.txt](books/236-the-jungle-book/raw.txt). Line numbers in this plan and in the JSONL refer to that exact file; `make check-data` verifies its hash.
 Capstone requirement: 60–100 realistic queries with gold answers, written and frozen **before** agent code (Track B, Week 1 gate).
 
 ## 1. Purpose
@@ -12,7 +12,7 @@ Capstone requirement: 60–100 realistic queries with gold answers, written and 
 ## 2. Scope for v1
 
 - **Playable chapter:** "Mowgli's Brothers" (file lines 56–829). Quest position is defined against its beats.
-- **Files:** items live in [eval/golden_v1.jsonl](../eval/golden_v1.jsonl) (80 items, tables below are the human-readable seed). The draft spine with beat line ranges and per-beat spoiler lists is [data/spine/mowgli_brothers.json](../data/spine/mowgli_brothers.json).
+- **Files:** items live in [golden_v1.jsonl](golden_v1.jsonl) (80 items, tables below are the human-readable seed). The draft spine with beat line ranges and per-beat spoiler lists is [spine_mowgli_brothers.json](spine_mowgli_brothers.json). Run outputs go to `runs/` (git-ignored).
 - **Retrieval corpus:** the whole book (later chapters begin at "Kaa's Hunting", line 857). Later chapters exist to make spoiler and retrieval-precision tests meaningful.
 - Add more books only after v1 is frozen. New books get a new set version, not edits to v1.
 

@@ -94,7 +94,7 @@ build: _need-compose ## Build the Docker image
 ##@ Quality
 
 check-data: ## Validate the golden set and the reference spine
-	@$(PY) scripts/check_data.py
+	@$(PY) eval/check_data.py
 
 test: _need-code ## Run backend and web tests
 	@$(BIN)/pytest
@@ -118,7 +118,7 @@ migrate: _need-code ## Apply database migrations
 	@$(ENV) $(BIN)/storyquest db migrate
 
 seed: _need-code ## Import the fixture books (Jungle Book) into the local database
-	@$(ENV) $(BIN)/storyquest catalog import fixtures/books
+	@$(ENV) $(BIN)/storyquest catalog import eval/books
 
 admin-user: _need-code ## Create an admin user (prompts for details)
 	@$(ENV) $(BIN)/storyquest admin create-user
@@ -147,12 +147,12 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 eval: _need-code ## Run the golden set: make eval MODE=M1 SPLIT=dev
 	@$(ENV) $(BIN)/storyquest eval run --mode $(MODE) --split $(SPLIT)
 
-eval-report: _need-code ## Build the HTML report for a run: make eval-report RUN=runs/<id>
-	@test -n "$(RUN)" || { echo "usage: make eval-report RUN=runs/<id>"; exit 1; }
+eval-report: _need-code ## Build the HTML report for a run: make eval-report RUN=eval/runs/<id>
+	@test -n "$(RUN)" || { echo "usage: make eval-report RUN=eval/runs/<id>"; exit 1; }
 	@$(ENV) $(BIN)/storyquest eval report $(RUN)
 
-eval-compare: _need-code ## Compare runs side by side: make eval-compare RUNS="runs/a runs/b"
-	@test -n "$(RUNS)" || { echo "usage: make eval-compare RUNS=\"runs/a runs/b\""; exit 1; }
+eval-compare: _need-code ## Compare runs side by side: make eval-compare RUNS="eval/runs/a eval/runs/b"
+	@test -n "$(RUNS)" || { echo "usage: make eval-compare RUNS=\"eval/runs/a eval/runs/b\""; exit 1; }
 	@$(ENV) $(BIN)/storyquest eval compare $(RUNS)
 
 ##@ Remote server (SSH alias in REMOTE, default "miles")

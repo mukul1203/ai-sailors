@@ -65,7 +65,7 @@ The MVP publishes a book only when all chapters are ready. Later, chapters can b
 
 ## Validation of the Jungle Book
 
-Chapter 1 beats are already hand-drafted in [data/spine/mowgli_brothers.json](../../data/spine/mowgli_brothers.json). They are the gold reference to compare generated beats against.
+Chapter 1 beats are already hand-drafted in [eval/spine_mowgli_brothers.json](../../eval/spine_mowgli_brothers.json). They are the gold reference to compare generated beats against.
 
 ## Open questions
 

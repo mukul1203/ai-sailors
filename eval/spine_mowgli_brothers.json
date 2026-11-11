@@ -1,7 +1,7 @@
 {
   "book": "The Jungle Book",
   "chapter": "Mowgli's Brothers",
-  "source_file": "fixtures/books/236-the-jungle-book/raw.txt",
+  "source_file": "eval/books/236-the-jungle-book/raw.txt",
   "source_lines": "56-829",
   "status": "draft - needs human review before use",
   "sidekick": "TBD",

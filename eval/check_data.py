@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "eval" / "golden_v1.jsonl"
-SPINE = ROOT / "data" / "spine" / "mowgli_brothers.json"
-BOOK_DIR = ROOT / "fixtures" / "books" / "236-the-jungle-book"
+EVAL = ROOT / "eval"
+GOLDEN = EVAL / "golden_v1.jsonl"
+SPINE = EVAL / "spine_mowgli_brothers.json"
+BOOK_DIR = EVAL / "books" / "236-the-jungle-book"
 BOOK = BOOK_DIR / "raw.txt"
 MANIFEST = BOOK_DIR / "book.yaml"
 

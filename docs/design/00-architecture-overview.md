@@ -120,10 +120,8 @@ Python for ingestion, agent and API (FastAPI-style service), SQLite with FTS5, O
 Proposed repo layout:
 
 ```
-fixtures/books/            Jungle Book fixture for tests and the golden set
-data/spine/                hand-written reference spines
-eval/                      golden set and runs
-docs/                      requirements, eval plan, design
+eval/                      golden set, reference spine, Jungle Book fixture, checks, run outputs
+docs/                      requirements and design
 web/                       React app
 src/storyquest/
   catalog/  ingestion/  stores/  agent/  models/  api/  evaluation/  cli.py

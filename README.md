@@ -5,7 +5,7 @@ StoryQuest Copilot: a parent-approved, book-grounded storytelling game for child
 ## Documents
 
 - [Capstone brief](docs/capstone-brief.md) and [MVP requirements](docs/mvp-prd.md)
-- [Golden eval set plan](docs/eval-golden-set.md); data in `eval/golden_v1.jsonl`
+- [Golden eval set plan](eval/README.md); all eval data lives in `eval/`
 - [Design docs](docs/design/00-architecture-overview.md) (overview, then one doc per component)
 
 ## Getting started

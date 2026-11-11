@@ -25,7 +25,7 @@ The `books` table is the registry (metadata, status, path and hash of the file).
 
 The volume path is behind a `BookStore` interface, so it can move to object storage later without touching anything else.
 
-**Exception: the golden-set book.** The Jungle Book text is committed under `fixtures/books/` because the golden set cites its line numbers and must run against a byte-identical file. Ingestion verifies its hash. Local development and tests seed from `fixtures/`.
+**Exception: the golden-set book.** The Jungle Book text is committed under `eval/books/` because the golden set cites its line numbers and must run against a byte-identical file. Ingestion verifies its hash. Local development and tests seed from `eval/books/`.
 
 ## Book record (the `books` table, edited in the admin view)
 
@@ -50,7 +50,7 @@ The volume path is behind a `BookStore` interface, so it can move to object stor
 4. The parent UI lists books from the DB, so the new book appears automatically once it is `ready`.
 5. The admin triggers ingestion from the admin view (or the CLI, which calls the same function). See doc 02.
 
-For local development and tests, `storyquest catalog import <dir>` seeds books from a folder such as `fixtures/books/`. Each book folder holds `raw.txt` and a `book.yaml` with the same fields as the book record below (the Jungle Book fixture shows the format).
+For local development and tests, `storyquest catalog import <dir>` seeds books from a folder such as `eval/books/`. Each book folder holds `raw.txt` and a `book.yaml` with the same fields as the book record below (the Jungle Book fixture shows the format).
 
 ## Statuses
 

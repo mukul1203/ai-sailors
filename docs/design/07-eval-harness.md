@@ -1,16 +1,16 @@
 # 07 — Evaluation Harness and Reports
 
-Scope: running the live agent against the golden set in different modes and producing human-friendly reports. Items and scoring rules are defined in [../eval-golden-set.md](../eval-golden-set.md) and [../../eval/golden_v1.jsonl](../../eval/golden_v1.jsonl).
+Scope: running the live agent against the golden set in different modes and producing human-friendly reports. Items and scoring rules are defined in [../../eval/README.md](../../eval/README.md) and [../../eval/golden_v1.jsonl](../../eval/golden_v1.jsonl).
 
 ## Run model
 
 ```
 storyquest eval run --mode M1 --split dev [--category SPO] [--repeat 3] [--judge-model ...]
-storyquest eval report runs/<run_id>
-storyquest eval compare runs/<a> runs/<b> [...]
+storyquest eval report eval/runs/<run_id>
+storyquest eval compare eval/runs/<a> eval/runs/<b> [...]
 ```
 
-Each run writes to `runs/<run_id>/`:
+Each run writes to `eval/runs/<run_id>/`:
 
 | File | Content |
 |---|---|
@@ -69,4 +69,4 @@ Dev and test splits are reported separately; test is shown only in the final rep
 
 - Judge model: the same 8B endpoint, or something larger offline (check programme rules).
 - Reading-level metric.
-- Whether to commit `runs/` or git-ignore it and keep only summaries.
+- Whether to commit `eval/runs/` or git-ignore it and keep only summaries.

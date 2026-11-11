@@ -54,7 +54,7 @@ Two ways, both proposed:
 1. Containers: `docker compose up` starts `app` and `worker` using the real model endpoint from `config.env` and your key from `.env`. Add `--profile admin` for the DB viewer.
 2. Without Docker: run the API and worker with the Python tooling, and the React dev server with hot reload.
 
-Seeding: `storyquest catalog import fixtures/books` loads the Jungle Book fixture. `storyquest admin create-user` creates a local admin.
+Seeding: `storyquest catalog import eval/books` loads the Jungle Book fixture. `storyquest admin create-user` creates a local admin.
 
 ### The `fake` provider
 
