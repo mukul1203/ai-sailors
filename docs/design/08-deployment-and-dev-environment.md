@@ -42,6 +42,7 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `LLM_MODEL` | `Qwen/Qwen3-8B` |
 | `LLM_CA_CERT_PATH` | Path to the CA certificate (`certs/ca.crt`); TLS verification stays on |
 | `LLM_MAX_CONCURRENCY` | `1` |
+| `LLM_REQUESTS_PER_MINUTE` | `50` (endpoint cap is 60) |
 | `DATA_DIR` | `var` locally (git-ignored), `/data` in containers |
 | `DBVIEWER_PORT` | Port for the DB viewer |
 

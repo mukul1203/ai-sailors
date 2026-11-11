@@ -26,6 +26,7 @@ class Settings:
     llm_model: str
     llm_ca_cert_path: Path
     llm_max_concurrency: int
+    llm_requests_per_minute: int
     data_dir: Path
     api_port: int
     dbviewer_port: int
@@ -55,6 +56,7 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         llm_model=get("LLM_MODEL", "Qwen/Qwen3-8B"),
         llm_ca_cert_path=path(get("LLM_CA_CERT_PATH", "certs/ca.crt")),
         llm_max_concurrency=int(get("LLM_MAX_CONCURRENCY", "1")),
+        llm_requests_per_minute=int(get("LLM_REQUESTS_PER_MINUTE", "50")),
         data_dir=path(get("DATA_DIR", "var")),
         api_port=int(get("API_PORT", "8000")),
         dbviewer_port=int(get("DBVIEWER_PORT", "8001")),

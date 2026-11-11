@@ -28,7 +28,7 @@ Priorities when requests contend: live child turns first, then eval runs, then i
 
 ## Cross-cutting behaviour
 
-- **Structured output:** Callers pass a JSON schema. The layer validates, retries with the error, and returns a typed object or a clear failure. If the endpoint supports guided decoding, use it; otherwise validate and retry. Check which the endpoint supports.
+- **Structured output:** Callers pass a JSON schema, sent as `response_format` (json_schema). The endpoint enforces it, so output is valid JSON matching the schema, enums included (verified). Truncation by `max_tokens` can still cut it short, so check `finish_reason`. Plain parse-and-retry remains the fallback for providers without guided decoding.
 - **Token accounting:** Every call records prompt and completion tokens, latency and model id into the trace. This matters because the team endpoint has a per-team quota.
 - **Disk cache:** Ingestion and eval calls are cached by request hash, so reruns are free and reproducible. Cache is off for live child traffic.
 - **Retries and timeouts:** Bounded retries with backoff; a hard timeout so a slow endpoint cannot hang a child's turn.
@@ -37,8 +37,8 @@ Priorities when requests contend: live child turns first, then eval runs, then i
 
 ## Qwen3-8B notes
 
-- It has a thinking mode that emits reasoning tokens. A sample response showed `reasoning: null` and plain content, but test a harder prompt before assuming thinking is off. If it is on, disable it for child-facing replies (latency, and tokens against the 8,192 limit) and strip it from outputs either way.
-- The context limit is 8,192 tokens combined, not the model's native length. Size every prompt against it.
+- **Thinking mode: effectively off.** Measured on the real endpoint: no `reasoning` field and no `<think>` block, even for a reasoning prompt; `chat_template_kwargs.enable_thinking` makes no difference. The client still splits a `<think>` block out of the text if one ever appears.
+- **Context is enforced at 8,192 tokens combined.** An oversized prompt returns HTTP 400 with the counts, which the client raises as an `LLMError` without retrying. Size every prompt against it.
 
 ## Config sketch
 
@@ -58,6 +58,5 @@ reranker:
 
 ## Open questions
 
-- Does the endpoint support JSON-schema guided decoding (vLLM `response_format` or guided JSON)? Test it.
 - Does the deployed app get its own key, or share the group key with developers?
 - Where will the separate embeddings service come from, when we add dense retrieval?

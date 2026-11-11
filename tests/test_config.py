@@ -16,7 +16,7 @@ def test_defaults_when_no_files(tmp_path: Path) -> None:
 
 def test_precedence_config_then_dotenv_then_environment(tmp_path: Path) -> None:
     write(tmp_path / "config.env", "LLM_MODEL=from-config\nAPI_PORT=1111\nDATA_DIR=var\n")
-    write(tmp_path / ".env", "# secrets\nLLM_API_KEY=\"abc\"\nAPI_PORT=2222\n")
+    write(tmp_path / ".env", '# secrets\nLLM_API_KEY="abc"\nAPI_PORT=2222\n')
     s = load_settings(tmp_path, environ={"API_PORT": "3333"})
     assert s.llm_model == "from-config"
     assert s.llm_api_key == "abc"
