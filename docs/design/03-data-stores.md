@@ -18,10 +18,10 @@ Both use WAL mode. All access goes through repository interfaces, so a later mov
 | `books` | `id` (Gutenberg id), `title`, `author`, `language`, `age_band`, `summary`, `content_notes`, `visibility`, `status`, `raw_path`, `content_sha256`, `uploaded_by`, `pipeline_version` |
 | `ingestion_jobs` | `id`, `book_id`, `pipeline_version`, `status`, `stage`, `progress_pct`, `error`, timestamps |
 | `ingestion_steps` | `job_id`, `chapter_id?`, `step`, `status`, `input_hash`, `attempts`, `error` |
-| `chapters` | `id`, `book_id`, `idx`, `title`, `kind`, `included`, `start_char`, `end_char` |
-| `beats` | `id`, `chapter_id`, `pipeline_version`, `idx`, `title`, `narration`, `clues` (json), `vocabulary` (json), `choice` (json), `start_char`, `end_char`, `spoiler_reveals` (json), `review_status` |
-| `chunks` | `id`, `book_id`, `chapter_id`, `beat_id`, `idx`, `text`, `start_char`, `end_char`, `token_count` |
-| `chunks_fts` | FTS5 virtual table over `chunks.text` (BM25) |
+| `chapters` | key `(book_id, idx)`, `title`, `kind`, `included`, `start_char`, `end_char` |
+| `beats` | key `(book_id, chapter_idx, idx)`, `title`, `narration`, `clues` (json), `vocabulary` (json), `choice` (json), `spoiler_reveals` (json), `start_char`, `end_char`, `review_status` |
+| `chunks` | `id`, `book_id`, `chapter_idx`, `beat_idx`, `idx`, `text`, `start_char`, `end_char` |
+| `chunks_fts` | FTS5 external-content table over `chunks.text` (porter stemming, BM25), kept in sync by triggers |
 | `chunk_vectors` | Later: `chunk_id`, `embedder_id`, `dim`, vector (via `sqlite-vec`) |
 | `entities` | `id`, `book_id`, `name`, `aliases` (json), `kind`, `card_text`, `first_chapter_idx`, `first_char` |
 
@@ -29,7 +29,8 @@ Notes:
 
 - Positions are character offsets into the cleaned text, with chapter index and beat index for cheap filtering.
 - Vectors store the embedder ID and dimension. Switching embedder means a new set of vectors, not a migration.
-- Published beats are immutable per `pipeline_version`.
+- Published beats are immutable per `pipeline_version`. The implemented schema has no `pipeline_version` column yet: it arrives with the first migration that regenerates beats (ingestion, step 7).
+- Built so far: `books`, `chapters`, `beats`, `chunks` and `chunks_fts` (migration `0001_init.sql`). `ingestion_jobs`, `ingestion_steps`, `entities` and `chunk_vectors` come with the steps that need them. Replacing a book's chapters also removes its beats and chunks (cascade).
 
 ## `app.db`
 

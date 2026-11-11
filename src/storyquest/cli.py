@@ -9,6 +9,7 @@ from storyquest import __version__
 from storyquest.config import load_settings
 from storyquest.models.build import build_llm
 from storyquest.models.llm import LLMError, Message
+from storyquest.stores.db import connect, migrate, migrations_dir
 
 
 def _show_config() -> int:
@@ -41,6 +42,14 @@ def _llm_ask(args: argparse.Namespace) -> int:
     return 0
 
 
+def _db_migrate() -> int:
+    settings = load_settings()
+    conn = connect(settings.data_dir / "content.db")
+    applied = migrate(conn, migrations_dir("content"))
+    print(f"content.db: applied {applied}" if applied else "content.db: up to date")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="storyquest")
     parser.add_argument("--version", action="version", version=f"storyquest {__version__}")
@@ -57,9 +66,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask.add_argument("--temperature", type=float, default=0.0)
     ask.add_argument("--no-cache", action="store_true")
 
+    db = sub.add_parser("db", help="Database tasks").add_subparsers(
+        dest="db_command", required=True
+    )
+    db.add_parser("migrate", help="Create or upgrade the databases")
+
     args = parser.parse_args(argv)
     if args.command == "config":
         return _show_config()
     if args.command == "llm":
         return _llm_ask(args)
+    if args.command == "db":
+        return _db_migrate()
     return 2

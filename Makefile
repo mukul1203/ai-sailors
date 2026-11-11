@@ -24,8 +24,17 @@ RUNS ?=
 DATA ?=
 DB ?= content
 
-# Load config.env (committed settings) then .env (secrets) for the recipe's shell.
-ENV := set -a; [ -f config.env ] && . ./config.env; [ -f .env ] && . ./.env; set +a;
+# Load .env (secrets) then config.env (settings) into the recipe's shell.
+# Variables already set in the caller's environment win, matching the app's own precedence.
+HASH := \#
+ENV := set -a; \
+	load() { [ -f "$$1" ] || return 0; \
+	  while IFS='=' read -r k v; do \
+	    case "$$k" in ''|"$(HASH)"*) continue;; esac; \
+	    v="$${v//\"/}"; \
+	    [ -z "$${!k+x}" ] && export "$$k=$$v"; \
+	  done < "$$1"; return 0; }; \
+	load .env; load config.env; set +a;
 
 .PHONY: help setup doctor llm-ping \
         dev dev-api dev-worker dev-web up down logs ps build \
