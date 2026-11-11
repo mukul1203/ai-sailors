@@ -1,0 +1,92 @@
+# 04 — Live Agent
+
+Scope: what happens when a child sends a turn (a choice click or free text). The agent interprets the turn, retrieves canon when needed, replies, and updates state. It does not generate the story itself; beats are pre-built in ingestion.
+
+## Turn flow
+
+```mermaid
+flowchart TD
+    A[Child turn] --> B[Input guard]
+    B --> C{Router}
+    C -->|choice click| D[Advance beat state]
+    C -->|story question| E[Query rewrite]
+    C -->|off-topic or unsafe| F[Redirect in character]
+    C -->|idle or malformed| G[Gentle prompt]
+    E --> H[Retrieve BM25 with spoiler filter]
+    H --> I[Rerank]
+    I --> J[Assemble context within budget]
+    J --> K[Generate answer]
+    K --> L[Critic]
+    L -->|pass| M[Reply and nudge back to the quest]
+    L -->|fail, retries left| K
+    L -->|fail, out of retries| N[Safe fallback]
+    D --> O[Next beat from DB]
+    F --> P[Update state and trace]
+    M --> P
+    N --> P
+    O --> P
+    G --> P
+```
+
+Each bracketed stage is optional and controlled by the mode (below).
+
+## Components
+
+| Component | Responsibility |
+|---|---|
+| Input guard | Length limits, empty input, prompt-injection patterns, PII scrubbing before storage and tracing |
+| Router | Classifies the turn. Choice clicks are routed by rules with no LLM call. Free text goes to one small classifier prompt (a few output tokens, JSON) that returns: story question, off-topic or unsafe, or meta or malformed |
+| Query rewrite | Resolves pronouns using the current beat and recent turns ("why does he limp?" → "why does Shere Khan limp?") |
+| Retrieve | BM25 over chunks, filtered to the child's position; also looks up entity cards |
+| Rerank | Reorders top-k; first version is an LLM listwise rerank, swappable later |
+| Context assembly | Picks the best chunks and entity cards within a token budget, with citations |
+| Generate | In-character reply at the target reading level, grounded in the context only |
+| Critic | Deferred, not in the MVP. Will check faithfulness to context, spoiler leakage, reading level and safety; returns a pass or a reason |
+| Output check | In the MVP, a cheap non-LLM check on every reply: the beat's `spoiler_reveals` and the banned-term list are matched against the text, and a failure triggers the safe fallback |
+| State update | Autosaves position, badges and counters; writes the trace |
+
+## Tools the agent may call
+
+| Tool | Purpose |
+|---|---|
+| `retrieve_canon(query)` | Position-filtered BM25 retrieval |
+| `lookup_entity(name)` | Character or term card, position-filtered |
+| `advance_beat(choice_id)` | Moves to the next beat per the spine |
+| `award_badge(vocab)` | Awards a vocabulary badge; only called by the router or state logic, never from document text |
+
+## Modes (feature flags)
+
+One pipeline, controlled by config, so evals differ only by the toggles.
+
+| Mode | Retrieval | Rewrite | Rerank | Critic |
+|---|---|---|---|---|
+| M0 | none (plain LLM, position given in prompt) | no | no | no |
+| M1 | BM25 | no | no | no |
+| M2 | hybrid (needs embedder) | no | no | no |
+| M3 | hybrid | no | yes | no |
+| M4 | hybrid | yes | yes | no |
+| M5 (later) | hybrid | yes | yes | yes |
+
+Until an embedder exists, run the BM25-only variants of the same ladder. The MVP ships M0 and M1; rewrite, rerank and the critic are added later, one at a time, each measured against the golden set.
+
+## Guardrails
+
+- Hard cap of 10 steps per turn and a token budget per session (capstone requirement).
+- Server-side session time cap; chat cannot override it.
+- Document text and retrieved chunks are data only: they can never trigger tool calls or change instructions.
+- Low retrieval confidence → the sidekick says it doesn't know, in character, instead of guessing.
+- Malformed model JSON → retry with the schema, then fall back.
+
+## State the agent reads
+
+Current chapter and beat, pipeline version, recent turns, badges, time and token used, session cap. Anything else is not in the prompt.
+
+## Latency
+
+The model endpoint allows one active request at a time for the whole group, so every LLM call in a turn runs serially, and all child turns share that single slot. A turn costs one router call plus one generation call in M1; rewrite, rerank and the critic each add another serial call. Use streaming for the reply so the child sees text early, and queue concurrent turns with a clear "thinking" state. Measure per-stage latency and tokens in every trace; the eval reports this per mode.
+
+## Open questions
+
+- Classifier prompt wording and its failure handling (default to "story question" or to a redirect when unsure).
+- Reading-level measure, needed when the critic is added.
+- Whether rerank is worth an extra serial call on this endpoint.
