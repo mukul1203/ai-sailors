@@ -43,6 +43,10 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `LLM_CA_CERT_PATH` | Path to the CA certificate (`certs/ca.crt`); TLS verification stays on |
 | `LLM_MAX_CONCURRENCY` | `1` |
 | `LLM_REQUESTS_PER_MINUTE` | `50` (endpoint cap is 60) |
+| `LLM_TIMEOUT_SECONDS` | `120`; how long one model call may take |
+| `CHUNK_TARGET_CHARS` | `1200`; ingestion aims for chunks about this long |
+| `CHUNK_MAX_CHARS` | `1800`; a paragraph longer than this is split on sentences |
+| `SHORT_CHAPTER_CHARS` | `8000`; chapters shorter than this are labelled poems |
 | `DATA_DIR` | `var` locally (git-ignored), `/data` in containers |
 | `DBVIEWER_PORT` | Port for the DB viewer |
 

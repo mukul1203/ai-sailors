@@ -24,6 +24,7 @@ def build_llm(settings: Settings, *, use_cache: bool = True) -> LLMClient:
             settings.llm_api_key,
             settings.llm_model,
             settings.llm_ca_cert_path,
+            timeout=settings.llm_timeout_seconds,
         ),
         max_concurrency=settings.llm_max_concurrency,
         requests_per_minute=settings.llm_requests_per_minute,

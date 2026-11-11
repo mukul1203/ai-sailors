@@ -28,6 +28,8 @@ Scope: turning a catalog book's raw text into chapters, beats, entity cards and 
 
 - **Beats partition the chapter.** Each beat covers a contiguous span, together covering the whole playable chapter. This makes the spoiler boundary exact: a child at beat *k* may see only chunks from earlier chapters and from beats up to *k*.
 - **Chunks never cross beat boundaries.** Segment beats first, chunk after.
+- **Beats start at paragraph starts.** Enforced when beats are loaded; a boundary that falls mid-paragraph is rejected, because it would split a sentence across two beats.
+- **Story-vs-poem is a heuristic.** A chapter is a poem if it is short (under 8,000 characters) or made of short indented lines. This is right for the Jungle Book (7 stories, 7 poems) but would mislabel a collection of very short stories, so the labels are reviewed with `make inspect` before a book is published.
 - **Position is stored, not inferred.** Every chunk, beat and entity carries chapter index and character offsets into the cleaned text.
 - **Endpoint limits shape everything.** The model allows 8,192 tokens combined input and output per call and at most 1,024 output tokens. A Jungle Book chapter is well over 8k tokens on its own (estimate), so no chapter fits in one call.
   - Work in windows of roughly 3–4k source tokens, leaving room for the prompt and output.

@@ -24,6 +24,9 @@ RUNS ?=
 DATA ?=
 DB ?= content
 
+ARGS ?=
+Q ?=
+
 # Load .env (secrets) then config.env (settings) into the recipe's shell.
 # Variables already set in the caller's environment win, matching the app's own precedence.
 HASH := \#
@@ -39,25 +42,30 @@ ENV := set -a; \
 .PHONY: help setup doctor llm-ping \
         dev dev-api dev-worker dev-web up down logs ps build \
         test lint format typecheck check check-data \
-        migrate seed admin-user ingest inspect db-shell db-viewer db-reset \
+        migrate seed admin-user ingest inspect search db-shell db-viewer db-reset \
         eval eval-report eval-compare \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
 ##@ Getting started
 
+# Prints every target that has a "## description" after its name, grouped by the "##@" headers.
 help: ## Show this help
 	@awk 'BEGIN{FS=":.*##"; printf "\nUsage: make \033[36m<target>\033[0m [VAR=value]\n"} \
 	  /^##@/{printf "\n\033[1m%s\033[0m\n", substr($$0,5)} \
 	  /^[a-zA-Z_-]+:.*##/{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-	@printf "\nCommon variables: BOOK=<id> MODE=<M0..M5> SPLIT=<dev|test> RUN=<run dir> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name>\n\n"
+	@printf "\nCommon variables: BOOK=<id> MODE=<M0..M5> SPLIT=<dev|test> RUN=<run dir> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name> Q=<question> ARGS=<extra options>\n\n"
 
+# Creates .env from .env.example if missing, a .venv virtualenv, and installs the project with
+# its dev tools (pip install -e ".[dev]"). Safe to re-run, e.g. after dependencies change.
 setup: ## First-time setup: .env, Python venv, dependencies, web packages
 	@test -f .env || { cp .env.example .env; echo "Created .env: fill in LLM_API_KEY and SESSION_SECRET"; }
 	@test -d $(VENV) || $(PY) -m venv $(VENV)
 	@if [ -f pyproject.toml ]; then $(BIN)/pip install -q -e ".[dev]"; else echo "skip Python deps: no pyproject.toml yet"; fi
 	@if [ -f web/package.json ]; then npm --prefix web install; else echo "skip web deps: no web/ yet"; fi
 
+# Read-only diagnostics: are the needed programs installed, are the secrets set, does the CA
+# certificate file exist. Only says "set" or "MISSING"; never prints secret values.
 doctor: ## Check tools, secrets, CA certificate and config
 	@for t in python3 docker npm sqlite3 curl ssh rsync; do command -v $$t >/dev/null && echo "ok       $$t" || echo "MISSING  $$t"; done
 	@$(ENV) \
@@ -66,6 +74,8 @@ doctor: ## Check tools, secrets, CA certificate and config
 	  [ -f "$$LLM_CA_CERT_PATH" ] && echo "ok       CA certificate at $$LLM_CA_CERT_PATH" || echo "MISSING  CA certificate at $$LLM_CA_CERT_PATH"; \
 	  echo "config   $$LLM_PROVIDER $$LLM_MODEL"
 
+# One tiny curl request straight to the model endpoint with your key, URL and certificate, so it
+# tests the connection without our Python code. Prints the raw JSON; "HTTP 200" means it works.
 llm-ping: ## Send a tiny request to the model endpoint to verify key, certificate and URL
 	@$(ENV) curl -sS --cacert "$$LLM_CA_CERT_PATH" "$$LLM_BASE_URL/chat/completions" \
 	  -H "Authorization: Bearer $$LLM_API_KEY" -H "Content-Type: application/json" \
@@ -74,18 +84,23 @@ llm-ping: ## Send a tiny request to the model endpoint to verify key, certificat
 
 ##@ Run
 
+# Starts the API, worker and web server in parallel. Not built yet.
 dev: _need-code _need-web ## Run API, worker and web dev server together (hot reload)
 	@$(MAKE) -j3 --output-sync=target dev-api dev-worker dev-web
 
+# uvicorn serves the API on API_PORT and restarts when code changes. Not built yet.
 dev-api: _need-code ## Run the API with reload
 	@$(ENV) $(BIN)/uvicorn storyquest.api.main:app --reload --port "$${API_PORT:-8000}"
 
+# Background process that picks up queued ingestion jobs. Not built yet.
 dev-worker: _need-code ## Run the ingestion worker
 	@$(ENV) $(BIN)/storyquest worker
 
+# Vite dev server for the React app. Not built yet.
 dev-web: _need-web ## Run the React dev server
 	@npm --prefix web run dev
 
+# up, down, logs, ps and build are thin wrappers around `docker compose`. Not built yet.
 up: _need-compose ## Start the stack in Docker (app + worker); add PROFILE=admin via COMPOSE_PROFILES
 	@$(COMPOSE) up --build
 
@@ -103,70 +118,109 @@ build: _need-compose ## Build the Docker image
 
 ##@ Quality
 
+# Checks eval/golden_v1.jsonl (fields, unique ids, valid values), the reference spine, that the
+# Jungle Book file still matches its recorded hash, and that each evidence quote in the golden
+# set appears at its cited raw line. Runs eval/check_data.py.
 check-data: ## Validate the golden set and the reference spine
 	@$(PY) eval/check_data.py
 
+# Runs pytest. Tests that call the real model endpoint are marked "live" and skipped by default
+# (run them on purpose with `.venv/bin/pytest -m live`).
 test: _need-code ## Run backend and web tests
 	@$(BIN)/pytest
 	@if [ -f web/package.json ]; then npm --prefix web test --if-present; fi
 
+# ruff check: style problems and common bugs. Does not change files (format does).
 lint: _need-code ## Lint backend and web
 	@$(BIN)/ruff check src tests
 	@if [ -f web/package.json ]; then npm --prefix web run lint --if-present; fi
 
+# ruff format: rewrites files to the project's code style.
 format: _need-code ## Auto-format backend code
 	@$(BIN)/ruff format src tests
 
+# mypy in strict mode over src/: finds type mistakes without running the code.
 typecheck: _need-code ## Type-check backend code
 	@$(BIN)/mypy src
 
+# check-data, lint, typecheck and test in that order, stopping at the first failure.
+# Run before committing.
 check: check-data lint typecheck test ## Everything CI would run
 
 ##@ Data and ingestion
 
+# Creates content.db if it does not exist and applies any new SQL files from
+# src/storyquest/stores/migrations/content/ (each file runs once and is recorded in
+# schema_migrations). The other data commands do this automatically, so rarely needed by hand.
 migrate: _need-code ## Apply database migrations
 	@$(ENV) $(BIN)/storyquest db migrate
 
+# Registers the books in eval/books/. For each folder with book.yaml and raw.txt it checks the
+# file's sha256 against book.yaml, copies raw.txt to DATA_DIR/books/<id>/raw.txt, and adds or
+# updates the book's row in content.db (an existing book keeps its status). Safe to re-run.
 seed: _need-code ## Import the fixture books (Jungle Book) into the local database
 	@$(ENV) $(BIN)/storyquest catalog import eval/books
 
+# Creates a login for the admin area. Not built yet.
 admin-user: _need-code ## Create an admin user (prompts for details)
 	@$(ENV) $(BIN)/storyquest admin create-user
 
-ingest: _need-code _need-book ## Ingest a book: make ingest BOOK=<id>
-	@$(ENV) $(BIN)/storyquest ingest $(BOOK)
+# Runs the stages that need no LLM, in order, printing one line each: verify the file hash,
+# clean off Gutenberg's header/footer, find chapters from the Contents list and label story vs
+# poem, optionally load hand-written beats (--spine), cut each beat into paragraph chunks, and
+# store it all in content.db. Re-running rebuilds chunks and keeps beats unless --spine is given.
+ingest: _need-code _need-book ## Run ingestion stages: make ingest BOOK=<id> [ARGS="--spine eval/spine_mowgli_brothers.json"]
+	@$(ENV) $(BIN)/storyquest ingest $(BOOK) $(ARGS)
 
-inspect: _need-code _need-book ## Print chapters, beats and chunk counts: make inspect BOOK=<id>
-	@$(ENV) $(BIN)/storyquest inspect $(BOOK)
+# Read-only report from content.db: every chapter with its story/poem label, raw line range and
+# beat and chunk counts. With --chapter N it also lists that chapter's beats and chunks.
+inspect: _need-code _need-book ## Show chapters, beats, chunks: make inspect BOOK=<id> [ARGS="--chapter 0"]
+	@$(ENV) $(BIN)/storyquest inspect $(BOOK) $(ARGS)
 
+# Runs the search the agent will use, as a child standing at --chapter/--beat (zero-based; the
+# defaults mean the end of the book). Turns the question into word terms, ranks chunks with BM25,
+# and leaves out chunks after the child's position, so spoilers never appear.
+search: _need-code _need-book ## Search as a child: make search BOOK=<id> Q="..." [ARGS="--chapter 0 --beat 1"]
+	@test -n "$(Q)" || { echo "usage: make search BOOK=<id> Q=\"...\" [ARGS=\"--chapter N --beat N\"]"; exit 1; }
+	@$(ENV) $(BIN)/storyquest search $(BOOK) "$(Q)" $(ARGS)
+
+# Opens the sqlite3 command-line shell on content.db or app.db for ad hoc SQL.
 db-shell: ## Open sqlite3 on a local database: make db-shell DB=content|app
 	@$(ENV) sqlite3 "$${DATA_DIR:-var}/$(DB).db"
 
+# Starts Datasette, a read-only web page for browsing the tables and running SELECT queries.
 db-viewer: ## Browse local databases in Datasette (DATA=dir to point at a snapshot)
 	@$(ENV) d="$(DATA)"; d="$${d:-$$DATA_DIR}"; \
 	  test -x $(BIN)/datasette || { echo "datasette not installed: run make setup"; exit 1; }; \
 	  echo "Viewer: http://localhost:$(VIEWER_PORT)"; \
 	  $(BIN)/datasette serve "$$d/content.db" "$$d/app.db" --port $(VIEWER_PORT)
 
+# Asks for confirmation, then deletes content.db and app.db. Uploaded books and the LLM cache
+# stay; re-create the data with `make seed` and `make ingest`.
 db-reset: ## DELETE the local databases (asks first); books and LLM cache are kept
 	@$(ENV) read -p "Delete $$DATA_DIR/content.db and app.db? [y/N] " a; \
 	  [ "$$a" = y ] && rm -f "$$DATA_DIR"/content.db* "$$DATA_DIR"/app.db* && echo "Deleted." || echo "Cancelled."
 
 ##@ Evaluation
 
+# The eval targets run the golden set against the agent in a mode and build reports. Not built yet.
 eval: _need-code ## Run the golden set: make eval MODE=M1 SPLIT=dev
 	@$(ENV) $(BIN)/storyquest eval run --mode $(MODE) --split $(SPLIT)
 
+# Builds the human-readable HTML report for one finished run.
 eval-report: _need-code ## Build the HTML report for a run: make eval-report RUN=eval/runs/<id>
 	@test -n "$(RUN)" || { echo "usage: make eval-report RUN=eval/runs/<id>"; exit 1; }
 	@$(ENV) $(BIN)/storyquest eval report $(RUN)
 
+# Shows several runs side by side (for example M0 against M1).
 eval-compare: _need-code ## Compare runs side by side: make eval-compare RUNS="eval/runs/a eval/runs/b"
 	@test -n "$(RUNS)" || { echo "usage: make eval-compare RUNS=\"eval/runs/a eval/runs/b\""; exit 1; }
 	@$(ENV) $(BIN)/storyquest eval compare $(RUNS)
 
 ##@ Remote server (SSH alias in REMOTE, default "miles")
 
+# Builds the image for the server's CPU type, streams it over SSH into the server's Docker,
+# copies the compose and config files (never .env), then starts the stack there. Not built yet.
 deploy: _need-compose ## Build the image, ship it over SSH and restart the stack
 	DOCKER_DEFAULT_PLATFORM=$(DEPLOY_PLATFORM) $(COMPOSE) build
 	docker save $(IMAGE) | gzip | ssh $(REMOTE) 'gunzip | docker load'
@@ -174,6 +228,7 @@ deploy: _need-compose ## Build the image, ship it over SSH and restart the stack
 	rsync -az --relative docker-compose.yml config.env config.prod.env $$(test -d certs && echo certs) $(REMOTE):$(REMOTE_DIR)/
 	ssh $(REMOTE) 'cd $(REMOTE_DIR) && test -f .env || { echo "Create $(REMOTE_DIR)/.env with the secrets first"; exit 1; }; docker compose up -d'
 
+# The remote-* targets run commands on the server over SSH (alias in REMOTE). Not built yet.
 remote-ps: ## Show service status on the server
 	@ssh $(REMOTE) 'cd $(REMOTE_DIR) && docker compose ps'
 
@@ -201,6 +256,7 @@ remote-db-pull: ## Copy a consistent snapshot of the server databases to var/rem
 
 ##@ Cleanup
 
+# Deletes Python caches and build output; nothing you would want to keep.
 clean: ## Remove caches and build output
 	@find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null; \
 	  rm -rf .pytest_cache .ruff_cache .mypy_cache web/dist

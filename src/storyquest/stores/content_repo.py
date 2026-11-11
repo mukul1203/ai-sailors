@@ -118,6 +118,18 @@ class ContentRepo:
                 ],
             )
 
+    def get_chunks(self, book_id: int, chapter_idx: int) -> list[Chunk]:
+        rows = self._conn.execute(
+            "SELECT * FROM chunks WHERE book_id = ? AND chapter_idx = ? ORDER BY beat_idx, idx",
+            (book_id, chapter_idx),
+        )
+        return [
+            Chunk(
+                r["chapter_idx"], r["beat_idx"], r["idx"], r["text"], r["start_char"], r["end_char"]
+            )
+            for r in rows
+        ]
+
     def count_chunks(self, book_id: int) -> int:
         row = self._conn.execute(
             "SELECT COUNT(*) FROM chunks WHERE book_id = ?", (book_id,)

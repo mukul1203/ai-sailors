@@ -8,6 +8,11 @@ from storyquest.stores.content_repo import ContentRepo
 from storyquest.stores.db import connect, migrate, migrations_dir
 
 
+@pytest.fixture(scope="session")
+def eval_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "eval"
+
+
 @pytest.fixture
 def conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     c = connect(tmp_path / "content.db")
