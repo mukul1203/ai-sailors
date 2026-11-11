@@ -25,8 +25,8 @@ A parent-approved, book-grounded storytelling game for children aged 6–9. Each
 2. **Quest session:** a sequence of 4–5 story beats from one chapter, each 2–4 sentences at the target reading level, followed by a choice (clickable cards plus optional free text).
 3. **Show → Ask → Reward:** each beat narrates the scene and surfaces the clue/vocabulary before asking the child to use it; never quiz on unseen facts.
 4. **Free-text "ask the sidekick":** the child can ask off-script questions; the system answers from retrieved book text, stays spoiler-safe for the current position, then returns to the quest.
-5. **Rewards:** vocabulary badges and a simple end-of-session summary shown to the parent.
-6. **Session wrap-up:** a gentle ending when the cap is reached or the quest completes.
+5. **Rewards:** vocabulary badges and a simple end-of-session summary shown to the parent. (Proposed for after the first end-to-end version; see docs/design/00-architecture-overview.md.)
+6. **Session wrap-up:** a gentle ending when the cap is reached or the quest completes. (Same: session cap is proposed for after the first end-to-end version.)
 7. **Safety:** refusal and redirect for off-topic or unsafe input; prompt-injection resistance; no PII collection.
 
 ### Out of scope for MVP
@@ -38,7 +38,7 @@ A parent-approved, book-grounded storytelling game for children aged 6–9. Each
 - **Quest Spine:** each chapter is pre-processed offline into a structured beat sequence (JSON) so the story always has a beginning, middle and end. Reviewed by a human before use.
 - **Live RAG is justified only by free-text questions.** If a flow can be fully served from the spine, it must not call retrieval.
 - **Spoiler boundary:** retrieval is filtered to text at or before the child's current position in the book.
-- **Small-model compensation:** JSON schema validation, retries, constrained output, and a critic check on every child-facing message.
+- **Small-model compensation:** JSON schema validation, retries, constrained output, and a non-LLM output check on every child-facing message (a critic step is planned for later).
 - **Public-domain sources only** (e.g. Project Gutenberg, Internet Archive); no film-derived content.
 
 ## 6. User flow
@@ -58,7 +58,7 @@ A parent-approved, book-grounded storytelling game for children aged 6–9. Each
 | RAG over 500–2,000 docs with hybrid retrieval, reranker, citations, recall@k | Corpus is many chapters/books chunked, not one chapter; spine covers only the quest path |
 | Agentic layer: ≥3 tools, planner→executor→critic, persistent state, error handling, ≤10 steps | Tools: retrieve_canon, get_next_beat, award_badge (and check_reading_level); state = quest position, badges, time used |
 | Evaluation, failure taxonomy, tracing | Metrics in section 9; trace each turn |
-| Ship: UI, container, rate limit, cache, responsible AI, human-in-the-loop | Streamlit or React front-end; parent is the human-in-the-loop boundary |
+| Ship: UI, container, rate limit, cache, responsible AI, human-in-the-loop | React front-end; parent is the human-in-the-loop boundary |
 
 ## 8. Functional requirements
 
@@ -66,7 +66,7 @@ A parent-approved, book-grounded storytelling game for children aged 6–9. Each
 |---|---|
 | FR1 | Parent can select an approved book and session cap before a session starts |
 | FR2 | System delivers beats from the Quest Spine in order, preserving state across turns |
-| FR3 | Every child-facing message passes a critic check for faithfulness, reading level and safety before display |
+| FR3 | Every child-facing message passes a non-LLM output check (spoiler list and banned terms) before display; an LLM critic for faithfulness, reading level and safety is added later |
 | FR4 | Free-text questions are answered using retrieved passages with citations; answers never include content beyond the child's position |
 | FR5 | If retrieval confidence is low, the sidekick says it does not know in-character rather than guessing |
 | FR6 | Malformed model output is retried and then falls back to a canned, safe response |
@@ -100,5 +100,4 @@ A parent-approved, book-grounded storytelling game for children aged 6–9. Each
 
 - Which books and chapters form the first corpus and the first spine?
 - Reading-level measure and target (for example a Flesch-Kincaid band)?
-- Which orchestration framework (LangGraph vs hand-rolled)?
-- Front-end choice (Streamlit vs React)?
+- Reading-level measure and target?

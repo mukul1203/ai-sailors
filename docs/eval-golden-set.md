@@ -1,6 +1,6 @@
 # Golden Evaluation Set — Plan and Seed Items
 
-Source book: *The Jungle Book* (Kipling), Project Gutenberg plain text at [jungle_book_plain_text.txt](../jungle_book_plain_text.txt).
+Source book: *The Jungle Book* (Kipling), Project Gutenberg plain text at [fixtures/books/236-the-jungle-book/raw.txt](../fixtures/books/236-the-jungle-book/raw.txt). Line numbers in this plan and in the JSONL refer to that exact file; `make check-data` verifies its hash.
 Capstone requirement: 60–100 realistic queries with gold answers, written and frozen **before** agent code (Track B, Week 1 gate).
 
 ## 1. Purpose
@@ -71,7 +71,7 @@ Split rules:
 
 ## 5. Seed items (drafted from chapter 1 text)
 
-Gold facts below come from the text. Quotes are short anchors for the reviewer. Line numbers in the tables are rough; the JSONL carries the checked ranges, which supersede these tables.
+Gold facts below come from the text. Quotes are short anchors for the reviewer. Line numbers in the tables are rough; the JSONL carries the checked ranges, which supersede these tables. `make check-data` verifies that each quoted evidence string appears at its cited lines in the fixture.
 
 ### CAN — canon Q&A
 

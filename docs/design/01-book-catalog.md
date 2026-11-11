@@ -50,7 +50,7 @@ The volume path is behind a `BookStore` interface, so it can move to object stor
 4. The parent UI lists books from the DB, so the new book appears automatically once it is `ready`.
 5. The admin triggers ingestion from the admin view (or the CLI, which calls the same function). See doc 02.
 
-For local development and tests, `storyquest catalog import <dir>` seeds books from a folder such as `fixtures/books/`.
+For local development and tests, `storyquest catalog import <dir>` seeds books from a folder such as `fixtures/books/`. Each book folder holds `raw.txt` and a `book.yaml` with the same fields as the book record below (the Jungle Book fixture shows the format).
 
 ## Statuses
 

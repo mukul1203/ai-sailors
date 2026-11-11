@@ -1,0 +1,95 @@
+{
+  "book": "The Jungle Book",
+  "chapter": "Mowgli's Brothers",
+  "source_file": "fixtures/books/236-the-jungle-book/raw.txt",
+  "source_lines": "56-829",
+  "status": "draft - needs human review before use",
+  "sidekick": "TBD",
+  "reading_level_target": "TBD (ages 6-9)",
+  "beats": [
+    {
+      "id": "B1",
+      "source_lines": "68-192",
+      "title": "A Warning at the Cave",
+      "narration_summary": "A warm evening in the Seeonee hills. Father Wolf wakes; Tabaqui the jackal visits and says Shere Khan the tiger will hunt here. Father Wolf is angry; Mother Wolf explains Shere Khan is lame.",
+      "clues": ["Tabaqui makes mischief", "Shere Khan changed hunting grounds without warning", "Shere Khan is lame (Lungri)", "tigers should not hunt Man"],
+      "vocabulary": ["jackal", "pack", "Law of the Jungle"],
+      "choice": {
+        "prompt": "Tabaqui whines that Shere Khan is coming. What should Father Wolf do?",
+        "cards": [
+          {"id": "B1-a", "text": "Send Tabaqui away", "next": "B2"},
+          {"id": "B1-b", "text": "Listen for Shere Khan", "next": "B2"}
+        ]
+      },
+      "spoiler_reveals": ["a baby arrives at the cave", "Mowgli", "Raksha", "Akela", "Baloo", "Bagheera", "Red Flower / fire", "Mowgli leaves the jungle", "Kaa", "monkeys", "Messua", "Buldeo", "Shere Khan's death"]
+    },
+    {
+      "id": "B2",
+      "source_lines": "194-289",
+      "title": "The Man's Cub",
+      "narration_summary": "A naked baby wanders in and is not afraid. Father Wolf carries him gently to the cubs. Shere Khan demands the baby but the cave is too narrow; Mother Wolf, Raksha, refuses and names him Mowgli the Frog.",
+      "clues": ["the baby is a man's cub", "Mother Wolf is called Raksha, the Demon", "Shere Khan's feet are burned from the campfire", "the cave mouth is too narrow for a tiger"],
+      "vocabulary": ["man's cub", "cub", "quarry"],
+      "choice": {
+        "prompt": "Shere Khan roars at the cave mouth. What does Mother Wolf do?",
+        "cards": [
+          {"id": "B2-a", "text": "Stand up to Shere Khan", "next": "B3"},
+          {"id": "B2-b", "text": "Hide the cub", "next": "B3", "note": "Both lead to B3; canon is B2-a."}
+        ]
+      },
+      "spoiler_reveals": ["Council acceptance details", "Baloo", "Bagheera", "ten years pass", "Red Flower / fire", "Mowgli leaves", "Shere Khan's death"]
+    },
+    {
+      "id": "B3",
+      "source_lines": "290-406",
+      "title": "The Council Rock",
+      "narration_summary": "The Pack meets at the Council Rock. Akela leads. The wolves cry 'Look well'. Baloo and Bagheera speak for Mowgli; Bagheera offers a fat bull. The Pack accepts Mowgli.",
+      "clues": ["a cub must be spoken for by two besides his parents", "Baloo teaches the cubs the Law", "Bagheera pays a bull", "Mowgli is entered into the Seeonee Pack"],
+      "vocabulary": ["Council Rock", "Free People", "Pack"],
+      "choice": {
+        "prompt": "Akela asks, 'Who speaks for this cub?' Who should speak first?",
+        "cards": [
+          {"id": "B3-a", "text": "Baloo the bear", "next": "B4"},
+          {"id": "B3-b", "text": "Bagheera the panther", "next": "B4"}
+        ]
+      },
+      "spoiler_reveals": ["Bagheera's collar and palace past", "Akela misses his kill", "Dead Wolf", "Red Flower / fire", "Mowgli leaves", "Kaa", "Gray Brother"]
+    },
+    {
+      "id": "B4",
+      "source_lines": "407-642",
+      "title": "The Red Flower",
+      "narration_summary": "Ten years pass. Mowgli grows up in the jungle but must never eat cattle. Bagheera warns that Shere Khan is his enemy, shows his collar mark, and tells Mowgli to fetch the Red Flower. Mowgli takes a fire pot from a village boy.",
+      "clues": ["Mowgli can never eat cattle because a bull bought him", "Bagheera was born among men", "the Red Flower is fire", "Akela is getting old"],
+      "vocabulary": ["Red Flower", "Law of the Jungle", "fire pot"],
+      "choice": {
+        "prompt": "Bagheera says Mowgli needs the Red Flower. How should Mowgli get it?",
+        "cards": [
+          {"id": "B4-a", "text": "Watch the village first", "next": "B5"},
+          {"id": "B4-b", "text": "Ask a wolf friend", "next": "B5", "note": "Canon: Mowgli watches, then takes the pot."}
+        ]
+      },
+      "spoiler_reveals": ["the Council Rock confrontation outcome", "Akela is spared", "Mowgli leaves the Pack", "Kaa", "Shere Khan's death"]
+    },
+    {
+      "id": "B5",
+      "source_lines": "643-829",
+      "title": "Farewell to the Pack",
+      "narration_summary": "Akela has missed his kill. At the Council Rock, Shere Khan demands Mowgli. Mowgli shows the Red Flower, drives the wolves away, saves Akela, and decides to leave the jungle for men. He cries and says goodbye to his wolf family.",
+      "clues": ["Akela missed his kill and is the Dead Wolf", "the wolves fear the Red Flower", "Mowgli promises not to betray the Pack", "Mowgli cries for the first time"],
+      "vocabulary": ["Dead Wolf", "betray", "farewell"],
+      "choice": {
+        "prompt": "Mowgli holds the fire. What does he do first?",
+        "cards": [
+          {"id": "B5-a", "text": "Stand up for Akela", "next": "END"},
+          {"id": "B5-b", "text": "Face Shere Khan", "next": "END"}
+        ]
+      },
+      "spoiler_reveals": ["events in later chapters: Kaa's Hunting, Tiger! Tiger!"]
+    }
+  ],
+  "ending": {
+    "summary": "Mowgli goes down the hill alone to meet men; the quest wraps up with a badge summary.",
+    "badges": []
+  }
+}

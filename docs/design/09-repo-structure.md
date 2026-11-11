@@ -20,7 +20,7 @@ ai-sailors/
 ├── docs/                     exists
 ├── eval/                     exists
 ├── data/spine/               exists   hand-written reference spines
-├── fixtures/                          committed sample inputs for tests and the golden set
+├── fixtures/                 exists   committed sample inputs for tests and the golden set
 ├── scripts/                  exists   small standalone helpers
 ├── src/storyquest/                    backend package
 ├── tests/                             backend tests
@@ -49,9 +49,9 @@ data/
     └── mowgli_brothers.json  exists
 fixtures/
 └── books/
-    └── 236-the-jungle-book/           (ID to verify)
-        ├── raw.txt                    moved from jungle_book_plain_text.txt at the repo root
-        └── book.yaml                  metadata used by `catalog import`
+    └── 236-the-jungle-book/           exists (Gutenberg ebook 236, verified)
+        ├── raw.txt                    exists; unmodified Gutenberg text
+        └── book.yaml                  exists; metadata used by `catalog import`
 ```
 
 The Jungle Book fixture is the only book in git. All other books are uploaded through the admin view and live in `var/` locally and on the server's data directory.
