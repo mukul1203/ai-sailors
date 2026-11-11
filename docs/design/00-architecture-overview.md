@@ -88,6 +88,7 @@ flowchart LR
 | Web app and API | [06](06-web-app-and-api.md) | Parent and child flows, auth, progress |
 | Eval harness | [07](07-eval-harness.md) | Mode comparison and reports |
 | Deployment and dev environment | [08](08-deployment-and-dev-environment.md) | Docker, local run, DB viewer, secrets |
+| Repository structure | [09](09-repo-structure.md) | Folder layout and dependency rules |
 
 ## Cross-cutting decisions
 
@@ -125,9 +126,11 @@ eval/                      golden set and runs
 docs/                      requirements, eval plan, design
 web/                       React app
 src/storyquest/
-  catalog/  ingestion/  stores/  agent/  models/  api/  eval/  cli.py
+  catalog/  ingestion/  stores/  agent/  models/  api/  evaluation/  cli.py
 Dockerfile  docker-compose.yml  .env.example
 ```
+
+The full layout and dependency rules are in [09-repo-structure.md](09-repo-structure.md).
 
 ## Open decisions
 

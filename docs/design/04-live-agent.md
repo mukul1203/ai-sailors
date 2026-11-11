@@ -30,6 +30,16 @@ flowchart TD
 
 Each bracketed stage is optional and controlled by the mode (below).
 
+## Implementation approach
+
+Plain Python, no agent framework (LangGraph, CrewAI or AutoGen) for the MVP.
+
+- A turn is a fixed sequence with a few branches. Nodes are ordinary functions that take and return a typed `TurnState` object; `agent/turn.py` is a small runner that calls them in order and follows the router's branch. Retry loops (generation, and the critic later) are explicit loops with a step cap.
+- Why not a framework: the flow is simple, our model layer already owns queuing, retries, caching and token accounting, and the modes are just flags that skip nodes. A framework adds a dependency and its own abstractions over those, for a team of six to learn in four weeks.
+- The planner-executor-critic requirement is met by explicit nodes and state, not by a library. Persistent state is the progress and session data in `app.db`.
+- Tracing is independent of the framework: every node records its inputs, outputs, tokens and latency in our own trace format, which can be exported to Langfuse or OpenTelemetry.
+- Keep nodes pure and graph-shaped (state in, state out), so a port to LangGraph later is mechanical if it starts to pay off, for example for visual graphs or checkpointing.
+
 ## Components
 
 | Component | Responsibility |
