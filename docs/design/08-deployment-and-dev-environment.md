@@ -31,6 +31,7 @@ Two kinds of files, strictly separated.
 | `LLM_API_KEY` | Group model key |
 | `LLM_BASE_URL` | Model endpoint URL (IP and port), treated as a secret |
 | `SESSION_SECRET` | Signing secret for sessions |
+| `EMBEDDING_API_KEY` | Gemini API key for embeddings (`GEMINI_API_KEY` also works); only the hybrid modes M2 and M2S need it |
 
 The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignored) on each developer machine, and copy it to the server's `certs/` once. It is mounted read-only into the container. `make deploy` syncs `certs/` from your machine if the folder exists.
 
@@ -47,6 +48,11 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `CHUNK_TARGET_CHARS` | `500`; ingestion aims for chunks about this long (smaller chunks make it easier for the model to pick the right evidence sentence) |
 | `CHUNK_MAX_CHARS` | `1800`; a paragraph longer than this is split on sentences |
 | `SHORT_CHAPTER_CHARS` | `8000`; chapters shorter than this are labelled poems |
+| `RETRIEVAL_TOP_K` | `6`; passages given to the model per turn |
+| `RETRIEVAL_CANDIDATES` | `20`; candidates taken from each of keyword and meaning search before fusing |
+| `RRF_K` | `60`; reciprocal rank fusion constant |
+| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `gemini` / `gemini-embedding-001` / `768` (`fake` for tests) |
+| `EMBEDDING_REQUESTS_PER_MINUTE` | `30`; keeps within the free tier |
 | `DATA_DIR` | `var` locally (git-ignored), `/data` in containers |
 | `DBVIEWER_PORT` | Port for the DB viewer |
 
@@ -116,6 +122,7 @@ The [Makefile](../../Makefile) is the single entry point for developer tasks; `m
 | Quality | `check-data`, `test`, `lint`, `format`, `typecheck`, `check` |
 | Data and ingestion | `migrate`, `seed`, `admin-user`, `ingest BOOK=`, `inspect BOOK=`, `db-shell DB=`, `db-viewer DATA=`, `db-reset` |
 | Evaluation | `eval MODES= SPLIT=`, `eval-report RUN=` |
+| Data | `demo-data` (seed, ingest with beats, embed), `embed BOOK=` |
 | Remote (SSH alias `REMOTE`) | `deploy`, `remote-ps`, `remote-logs`, `remote-restart`, `remote-shell`, `remote-viewer`, `remote-db-tunnel`, `remote-db-pull` |
 | Cleanup | `clean`, `clean-all` |
 

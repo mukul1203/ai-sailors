@@ -20,7 +20,7 @@ Scope: turning a catalog book's raw text into chapters, beats, entity cards and 
 | 6 | Generate beats | LLM, JSON-schema output, per beat: narration, clues, vocabulary, choice cards, spoiler reveals | `beats` rows (draft) |
 | 7 | Validate beats | Quotes must appear verbatim in the span; length and reading-level checks; safety screen | pass, flag or retry |
 | 8 | Entity cards | Extract characters and terms with aliases, a short child-friendly card and a `first_appears` position | `entities` rows |
-| 9 | Chunk and index | Paragraph-group chunks that never cross a beat boundary; BM25 index (and vectors later) | `chunks`, FTS index |
+| 9 | Chunk and index | Paragraph-group chunks that never cross a beat boundary; BM25 index; vectors are added afterwards by `make embed` | `chunks`, FTS index |
 | 10 | Review | A human approves beats for new books (flagged ones first) | beats `approved` |
 | 11 | Publish | Mark the book `ready` | `books.status = ready` |
 

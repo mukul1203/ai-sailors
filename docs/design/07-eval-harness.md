@@ -5,7 +5,7 @@ Scope: running the live agent against the golden set in different modes and prod
 ## Run model
 
 ```
-storyquest eval run --modes "M0 M1 M1S" --split dev [--category SPO] [--no-judge] [--no-open]
+storyquest eval run --modes "M0 M1S M2S" --split dev [--category SPO] [--no-judge] [--no-open]
 storyquest eval report eval/runs/<time>
 ```
 
@@ -59,7 +59,7 @@ Dev and test splits are reported separately; test is shown only in the final rep
 
 ## Built so far (text runner, deterministic checks)
 
-`make eval` runs every non-skipped item through each mode in `MODES` (default M0, M1, M1S), judges the replies, and saves `config.json`, `results.jsonl` and `summary.txt` per mode under `eval/runs/<time>/<mode>/`, plus one `report.html` for the whole batch, which it opens in the browser.
+`make eval` runs every non-skipped item through each mode in `MODES` (default M0, M1S, M2S), judges the replies, and saves `config.json`, `results.jsonl` and `summary.txt` per mode under `eval/runs/<time>/<mode>/`, plus one `report.html` for the whole batch, which it opens in the browser.
 
 - **Skipped items:** those marked `skip` in the golden file need a full quest session (choice clicks, idle time, session cap) or an injected poisoned passage, so they wait for step 8.
 - **Behaviour check:** answered, deflected, refused, asked to clarify or reassured, judged from the route and reply.

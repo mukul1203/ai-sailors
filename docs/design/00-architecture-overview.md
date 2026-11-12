@@ -34,7 +34,7 @@ flowchart LR
 
     subgraph Models["Model layer (doc 05)"]
         LLM["LLMClient: Qwen3-8B<br/>1 request at a time"]
-        EMB["Embedder: none yet"]
+        EMB["Embedder: Gemini API (dev), swappable"]
         RR["Reranker"]
     end
 
@@ -97,7 +97,7 @@ flowchart LR
 - **One agent code path** serves the web app and the eval runner; modes are config.
 - **Everything swappable sits behind an interface:** model provider, embedder, reranker, book store, database access.
 - **Single server for now:** two SQLite files, one app process, a background worker for ingestion.
-- **The model endpoint is the bottleneck.** One active request at a time for the whole group, 8,192 tokens per call, 1,024 output tokens, and no embeddings. This forces windowed ingestion, a global request queue, a cache, a fake provider for tests, and a critic-free MVP.
+- **The model endpoint is the bottleneck.** One active request at a time for the whole group, 8,192 tokens per call, 1,024 output tokens, and no embeddings (so embeddings come from a separate service, see [05](05-model-layer.md)). This forces windowed ingestion, a global request queue, a cache, a fake provider for tests, and a critic-free MVP.
 
 ## Project Gutenberg access
 

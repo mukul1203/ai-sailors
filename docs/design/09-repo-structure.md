@@ -69,14 +69,15 @@ src/storyquest/
 │   ├── fake.py                 canned or recorded responses for tests
 │   ├── queue.py                global request queue, concurrency 1, 429 and 503 retry
 │   ├── cache.py                disk cache keyed by request hash
-│   ├── embedder.py             Embedder interface (no implementation yet)
+│   ├── embedder.py             Embedder interface, Gemini, fake and caching versions
 │   └── reranker.py             Reranker interface and the LLM listwise version
 ├── stores/                   databases (doc 03)
 │   ├── db.py                   connections, WAL, migration runner
 │   ├── migrations/             numbered SQL files, content and app
 │   ├── content_repo.py         books, chapters, beats, chunks, entities, jobs
 │   ├── app_repo.py             users, children, approvals, progress, sessions, turns
-│   ├── search.py               FTS5 BM25 with the spoiler filter
+│   ├── search.py               FTS5 BM25, reciprocal rank fusion, spoiler filter
+│   ├── vector.py               chunk_embeddings storage and cosine search
 │   └── book_store.py           BookStore interface and the local-volume version
 ├── catalog/                  upload validation and `catalog import` (doc 01)
 ├── ingestion/                offline pipeline (doc 02)
@@ -86,7 +87,8 @@ src/storyquest/
 │   └── prompts/                prompt files, versioned with pipeline_version
 ├── agent/                    live agent (doc 04)
 │   ├── turn.py                 orchestrates one child turn
-│   ├── modes.py                M0 to M5 feature flags
+│   ├── modes.py                M0, M1, M1S, M2, M2S (later M3 to M5) feature flags
+│   ├── retrieval.py            picks keyword or hybrid retrieval for a mode
 │   ├── router.py               rules plus the classifier prompt
 │   ├── guard.py                input checks and PII scrubbing
 │   ├── rewrite.py  retrieve.py  rerank.py  context.py  generate.py

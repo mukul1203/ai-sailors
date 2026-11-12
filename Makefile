@@ -18,7 +18,7 @@ SERVICE ?=
 # Task parameters
 BOOK ?=
 MODE ?= M1
-MODES ?= M0 M1 M1S
+MODES ?= M0 M1S M2S
 SPLIT ?= dev
 RUN ?=
 DATA ?=
@@ -42,7 +42,7 @@ ENV := set -a; \
 .PHONY: help setup doctor llm-ping \
         dev dev-api dev-worker dev-web up down logs ps build \
         test lint format typecheck check check-data \
-        migrate seed admin-user ingest embed inspect search ask db-shell db-viewer db-reset \
+        migrate seed demo-data admin-user ingest embed inspect search ask db-shell db-viewer db-reset \
         eval eval-report \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
@@ -72,6 +72,7 @@ doctor: ## Check tools, secrets, CA certificate and config
 	  [ -n "$$LLM_API_KEY" ] && echo "ok       LLM_API_KEY is set" || echo "MISSING  LLM_API_KEY (put it in .env)"; \
 	  [ -n "$$LLM_BASE_URL" ] && echo "ok       LLM_BASE_URL is set" || echo "MISSING  LLM_BASE_URL (put it in .env)"; \
 	  [ -f "$$LLM_CA_CERT_PATH" ] && echo "ok       CA certificate at $$LLM_CA_CERT_PATH" || echo "MISSING  CA certificate at $$LLM_CA_CERT_PATH"; \
+	  [ -n "$${EMBEDDING_API_KEY:-$$GEMINI_API_KEY}" ] && echo "ok       EMBEDDING_API_KEY is set" || echo "missing  EMBEDDING_API_KEY (only needed for hybrid modes M2 and M2S)"; \
 	  echo "config   $$LLM_PROVIDER $$LLM_MODEL"
 
 # One tiny curl request straight to the model endpoint with your key, URL and certificate, so it
@@ -161,7 +162,16 @@ migrate: _need-code ## Apply database migrations
 seed: _need-code ## Import the fixture books (Jungle Book) into the local database
 	@$(ENV) $(BIN)/storyquest catalog import eval/books
 
-# Creates a login for the admin area. Not built yet.
+# Everything needed to play with the Jungle Book in one go: seed, ingest (with the hand-written
+# beats) and embed. Safe to re-run. The embed step is skipped, with a note, if there is no
+# EMBEDDING_API_KEY; modes M0, M1 and M1S work without it.
+demo-data: _need-code ## Load the Jungle Book ready to play: seed, ingest with beats, embed
+	@$(MAKE) --no-print-directory seed
+	@$(MAKE) --no-print-directory ingest BOOK=236 ARGS="--spine eval/spine_mowgli_brothers.json"
+	@$(ENV) if [ -n "$${EMBEDDING_API_KEY:-$$GEMINI_API_KEY}" ]; then $(MAKE) --no-print-directory embed BOOK=236; \
+	  else echo "skipped embed: no EMBEDDING_API_KEY in .env (needed only for modes M2 and M2S)"; fi
+
+# Admin area login. Not built yet.
 admin-user: _need-code ## Create an admin user (prompts for details)
 	@$(ENV) $(BIN)/storyquest admin create-user
 
@@ -232,7 +242,7 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 # sentence evidence (M2 and M2S need `make embed` first).
 # Add ARGS="--no-judge" for a faster run without the judge, ARGS="--no-open" to not open the
 # browser, ARGS="--category SPO --limit 5" for a subset.
-eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1 M1S"] [SPLIT=dev] [ARGS="..."]
+eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1S M2S"] [SPLIT=dev] [ARGS="..."]
 	@$(ENV) $(BIN)/storyquest eval run --modes "$(MODES)" --split $(SPLIT) $(ARGS)
 
 # Rebuilds report.html from a saved folder under eval/runs/ and opens it again, without any
