@@ -439,7 +439,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask_agent.add_argument(
         "--mode",
         default="M1",
-        help="M0 plain, M1 retrieval, M1S +evidence sentences, M2 hybrid, M2S hybrid +evidence",
+        help="M0 plain, M1 retrieval, M1S +evidence sentences, M2 hybrid, M2S hybrid +evidence, "
+        "M3/M3S + entity cards",
     )
     ask_agent.add_argument("--verbose", action="store_true", help="show the exact prompts")
     ask_agent.add_argument("--no-cache", action="store_true")

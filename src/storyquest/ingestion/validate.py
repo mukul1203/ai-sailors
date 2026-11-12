@@ -77,6 +77,21 @@ def safety_hits(texts: list[str]) -> list[str]:
     return sorted(found)
 
 
+def duplicate_title_flags(beats: list[Beat]) -> dict[int, str]:
+    """For each beat whose title another beat of the chapter also has, a flag naming that beat."""
+    first: dict[str, int] = {}
+    flags: dict[int, str] = {}
+    for beat in beats:
+        key = normalise(beat.title)
+        if not key or beat.title.startswith("Part "):
+            continue
+        if key in first:
+            flags[beat.idx] = f"the title repeats the title of B{first[key] + 1}"
+        else:
+            first[key] = beat.idx
+    return flags
+
+
 def check_beat(beat: Beat, scene: str) -> list[Problem]:
     """Everything wrong with a beat's generated content, given the text of its scene."""
     scene_norm = normalise(scene)

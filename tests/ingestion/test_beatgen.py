@@ -41,7 +41,7 @@ def run(llm: StageLLM, scene: str = SCENE, has_next: bool = True) -> Beat:
 def test_a_good_answer_fills_the_beat_without_flags() -> None:
     llm = StageLLM()
     beat = run(llm)
-    assert beat.title == "A Scene In The Jungle" and beat.narration
+    assert beat.title.startswith("Scene ") and beat.narration
     assert len(beat.clues) == len(beat.clue_quotes) == 3
     assert beat.flags == [] and len(llm.calls) == 1
     assert beat.review_status == "draft" and beat.source == "llm" and beat.pipeline_version == "v1"

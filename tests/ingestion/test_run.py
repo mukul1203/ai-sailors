@@ -67,7 +67,7 @@ def test_llm_stages_build_beats_chunks_and_entities_but_keep_the_hand_written_ch
     for chapter in chapters[1:]:
         beats = repo.get_beats(BOOK, chapter.idx)
         assert len(beats) >= 3, chapter.title
-        assert all(b.source == "llm" and b.title == "A Scene In The Jungle" for b in beats)
+        assert all(b.source == "llm" and b.title.startswith("Scene ") for b in beats)
         assert all(b.review_status == "draft" and not b.flags for b in beats)
         assert beats[0].spoiler_reveals[-1] == chapters[-1].title or chapter is chapters[-1]
         assert {c.beat_idx for c in repo.get_chunks(BOOK, chapter.idx)} == {b.idx for b in beats}

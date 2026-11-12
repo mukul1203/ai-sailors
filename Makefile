@@ -55,7 +55,7 @@ help: ## Show this help
 	@awk 'BEGIN{FS=":.*##"; printf "\nUsage: make \033[36m<target>\033[0m [VAR=value]\n"} \
 	  /^##@/{printf "\n\033[1m%s\033[0m\n", substr($$0,5)} \
 	  /^[a-zA-Z_-]+:.*##/{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-	@printf "\nCommon variables: BOOK=<id> MODE=<M0|M1|M1S|M2|M2S> MODES=\"M0 M1 ...\" SPLIT=<dev|test> RUN=<run folder> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name> Q=<question> ARGS=<extra options>\n\n"
+	@printf "\nCommon variables: BOOK=<id> MODE=<M0|M1|M1S|M2|M2S|M3|M3S> MODES=\"M0 M1 ...\" SPLIT=<dev|test> RUN=<run folder> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name> Q=<question> ARGS=<extra options>\n\n"
 
 # Creates .env from .env.example if missing, a .venv virtualenv, and installs the project with
 # its dev tools (pip install -e ".[dev]"). Safe to re-run, e.g. after dependencies change.
@@ -280,7 +280,8 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 # it in the browser. Everything is saved under eval/runs/<time>/ (one folder per mode plus the
 # report). Items that need a full quest session are skipped. Model answers are cached, so
 # repeat runs are fast. Modes: M0 plain model, M1 retrieval, M1S sentence evidence, M2 hybrid retrieval, M2S hybrid +
-# sentence evidence (M2 and M2S need `make embed` first).
+# sentence evidence (M2 and M2S need `make embed` first), M3 / M3S = M2 / M2S plus entity cards
+# (also need `make ingest-llm`).
 # Add ARGS="--no-judge" for a faster run without the judge, ARGS="--no-open" to not open the
 # browser, ARGS="--category SPO --limit 5" for a subset.
 eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1S M2S"] [SPLIT=dev] [ARGS="..."]

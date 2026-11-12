@@ -92,3 +92,16 @@ def test_safety_screen_finds_listed_words_only() -> None:
     assert (
         safety_hits(["The tiger will kill the deer"]) == []
     )  # the book's own violence is not screened
+
+
+def test_beats_that_share_a_title_are_flagged() -> None:
+    from storyquest.ingestion.validate import duplicate_title_flags
+
+    beats = [
+        replace(GOOD, idx=0, title="Kotick's Big Adventure"),
+        replace(GOOD, idx=1, title="Another Scene"),
+        replace(GOOD, idx=2, title="kotick's big  adventure"),
+        replace(GOOD, idx=3, title="Part 4"),
+        replace(GOOD, idx=4, title="Part 4"),
+    ]
+    assert duplicate_title_flags(beats) == {2: "the title repeats the title of B1"}

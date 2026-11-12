@@ -72,3 +72,20 @@ def test_the_model_answer_is_read_tolerantly() -> None:
     assert [i["name"] for i in items] == ["Mowgli", "Zork Zorkson"]
     llm.mode = "garbage"
     assert extract_from_beat(llm, book_title="b", author="a", scene="Mowgli") == []
+
+
+def test_ambiguous_and_generic_aliases_are_dropped() -> None:
+    from storyquest.ingestion.entities import clean_aliases
+
+    def entity(name: str, aliases: list[str]) -> Entity:
+        return Entity(entity_key(name), name, "character", "card", 0, aliases)
+
+    known = {
+        "mowgli": entity("Mowgli", ["Little Brother", "man", "Man-cub", "Frog"]),
+        "bagheera": entity("Bagheera", ["Little Brother", "Black Panther", "Akela"]),
+        "akela": entity("Akela", ["Lone Wolf"]),
+    }
+    dropped = clean_aliases(known)
+    assert known["mowgli"].aliases == ["Man-cub", "Frog"]  # shared and generic ones are gone
+    assert known["bagheera"].aliases == ["Black Panther"]  # "Akela" is another entity's name
+    assert known["akela"].aliases == ["Lone Wolf"] and dropped == 4

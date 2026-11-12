@@ -16,11 +16,11 @@ from pathlib import Path
 from storyquest.config import Settings
 from storyquest.domain.book import Beat, Chapter, Entity
 from storyquest.ingestion.beatgen import generate_beat, next_hint, with_spoilers
-from storyquest.ingestion.entities import extract_from_beat, merge_into
+from storyquest.ingestion.entities import clean_aliases, extract_from_beat, merge_into
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.pipeline import Prepared, build_chunks, prepare
 from storyquest.ingestion.segment import compare_boundaries, segment_chapter
-from storyquest.ingestion.validate import check_beat
+from storyquest.ingestion.validate import check_beat, duplicate_title_flags
 from storyquest.ingestion.version import pipeline_version
 from storyquest.models.llm import LLMClient, LLMError
 from storyquest.stores.content_repo import ContentRepo
@@ -222,18 +222,22 @@ class _Run:
             status = f"{len(filled.flags)} flag(s)" if filled.flags else "ok"
             self.log(f"generate ch{chapter.idx} B{beat.idx + 1} {filled.title!r}: {status}")
         merged = [done.get(b.idx, b) for b in beats]
+        repeated = duplicate_title_flags(merged)
         for beat in with_spoilers(merged, later_titles):
             if beat.idx in done:
-                self.repo.update_beat(self.book.id, beat)
-        flagged = sum(1 for b in done.values() if b.flags)
+                extra = [repeated[beat.idx]] if beat.idx in repeated else []
+                self.repo.update_beat(self.book.id, replace(beat, flags=[*beat.flags, *extra]))
+        flagged = sum(1 for b in done.values() if b.flags or b.idx in repeated)
         self._record(chapter, GENERATE, input_hash, "done", f"{len(done)} beats, {flagged} flagged")
 
     def validate(self, chapter: Chapter) -> None:
         beats = [b for b in self.repo.get_beats(self.book.id, chapter.idx) if b.source == "llm"]
+        repeated = duplicate_title_flags(beats)
         flagged = 0
         for beat in beats:
             scene = scene_text(self.text, chapter, beat)
             flags = [p.message for p in check_beat(beat, scene)]
+            flags += [repeated[beat.idx]] if beat.idx in repeated else []
             flagged += bool(flags)
             self.repo.update_beat(self.book.id, replace(beat, flags=flags))
         self.log(
@@ -267,10 +271,11 @@ class _Run:
                 known, items, text=self.text, book_start=book_start,
                 chapter_idx=chapter.idx, beat=beat,
             )  # fmt: skip
+        dropped_aliases = clean_aliases(known)
         self.repo.replace_entities_from_chapter(self.book.id, chapter.idx, list(known.values()))
         self.log(
             f"entities ch{chapter.idx} {chapter.title!r}: {len(known) - before} new, "
-            f"{len(known)} in the book, {len(notes)} dropped"
+            f"{len(known)} in the book, {len(notes)} dropped, {dropped_aliases} aliases dropped"
         )
         self._record(chapter, ENTITIES, input_hash, "done", json.dumps(notes))
 

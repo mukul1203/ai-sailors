@@ -8,6 +8,7 @@ cannot spoil later events.
 
 import json
 import re
+from dataclasses import replace
 from typing import Any
 
 from storyquest.domain.book import Beat, Entity
@@ -17,6 +18,7 @@ from storyquest.models.llm import LLMClient
 MAX_TOKENS = 900
 MAX_PER_SCENE = 8
 MAX_ALIASES = 3
+MIN_ALIAS_CHARS = 4
 MAX_NAME_CHARS = 40
 KINDS = ("character", "place", "term")
 
@@ -88,6 +90,28 @@ def extract_from_beat(
         json_schema=SCHEMA,
     )
     return _read(result.text)
+
+
+def clean_aliases(known: dict[str, Entity]) -> int:
+    """Drop aliases that would send a child to the wrong card: ones shared with another entity
+    or equal to its name, generic lowercase words ("man", "dog"), and very short ones. Returns
+    how many were dropped."""
+    owners: dict[str, int] = {}
+    for key, entity in known.items():
+        for alias_key in {key, *(entity_key(a) for a in entity.aliases)}:
+            owners[alias_key] = owners.get(alias_key, 0) + 1
+    dropped = 0
+    for key, entity in known.items():
+        kept = [
+            a
+            for a in entity.aliases
+            if len(a) >= MIN_ALIAS_CHARS
+            and any(ch.isupper() for ch in a)
+            and owners[entity_key(a)] == 1
+        ]
+        dropped += len(entity.aliases) - len(kept)
+        known[key] = replace(entity, aliases=kept)
+    return dropped
 
 
 def merge_into(

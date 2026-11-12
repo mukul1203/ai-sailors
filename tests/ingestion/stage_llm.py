@@ -58,7 +58,7 @@ class StageLLM(FakeClient):
             quote = scene[:70] if self.mode == "good" else "words that are not in the scene at all"
             return json.dumps(
                 {
-                    "title": "A Scene In The Jungle",
+                    "title": "Scene " + " ".join(scene.split()[:3]),
                     "narration_summary": NARRATION,
                     "clues": [{"quote": quote, "clue": f"Clue {i}"} for i in range(3)],
                     "vocabulary": words,
