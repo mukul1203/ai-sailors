@@ -89,8 +89,15 @@ The same agent code runs every mode; only the settings differ.
 | M2S | hybrid | yes | yes |
 | M3 / M3S | hybrid, plus entity cards for named characters, places and terms | no / yes | yes, and `make ingest-llm` for the cards |
 
-M2S is the best so far (about 70% on the dev split). Hybrid modes need `make embed BOOK=<id>`
+M2S is the best so far (72% on the dev split). M3S, the entity-card variant, scored 68% in its first
+run: the card for a name ("Akela is the leader of the wolf pack") can win the model's attention
+over the book sentences that hold the exact facts, so M3 and M3S are experimental.
+
+Hybrid modes need `make embed BOOK=<id>`
 once per book, and again after `make ingest` rebuilds the chunks (`make demo-data` does both).
+If the vectors are missing, hybrid modes fall back to keyword search and the turn carries the flag
+`no_vectors`. The free Gemini tier has a daily embedding quota: `make embed` stores each batch as
+it goes, earliest chapter first, and resumes where it stopped.
 
 ## Configuration
 

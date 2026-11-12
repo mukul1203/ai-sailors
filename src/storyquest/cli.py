@@ -43,6 +43,8 @@ from storyquest.stores.db import connect, migrate, migrations_dir
 from storyquest.stores.search import hybrid_search, search_chunks
 from storyquest.stores.vector import chunks_without_vectors, store_vectors
 
+EMBED_BATCH = 50
+
 
 def _show_config() -> int:
     settings = load_settings()
@@ -247,20 +249,29 @@ def _embed(args: argparse.Namespace) -> int:
     settings, conn = _open_content()
     try:
         embedder = build_embedder(settings, use_cache=not args.no_cache)
-        todo = chunks_without_vectors(conn, args.book, embedder.model_id)
-        if not todo:
-            print(f"Book {args.book}: every chunk already has a {embedder.model_id} vector")
-            return 0
-        vectors = embedder.embed([text for _, text in todo], query=False)
     except EmbeddingError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    store_vectors(
-        conn,
-        embedder.model_id,
-        embedder.dim,
-        [(cid, v) for (cid, _), v in zip(todo, vectors, strict=True)],
-    )
+    todo = chunks_without_vectors(conn, args.book, embedder.model_id)
+    if not todo:
+        print(f"Book {args.book}: every chunk already has a {embedder.model_id} vector")
+        return 0
+    done = 0
+    for start in range(0, len(todo), EMBED_BATCH):  # stored batch by batch, earliest chapter first
+        part = todo[start : start + EMBED_BATCH]
+        try:
+            vectors = embedder.embed([text for _, text in part], query=False)
+        except EmbeddingError as e:
+            print(f"error: {e}", file=sys.stderr)
+            print(f"Embedded {done} of {len(todo)} chunks before stopping; run again to resume.")
+            return 1
+        store_vectors(
+            conn,
+            embedder.model_id,
+            embedder.dim,
+            [(cid, v) for (cid, _), v in zip(part, vectors, strict=True)],
+        )
+        done += len(part)
     print(f"Book {args.book}: embedded {len(todo)} chunks with {embedder.model_id}")
     return 0
 

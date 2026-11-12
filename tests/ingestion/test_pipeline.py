@@ -62,6 +62,19 @@ def test_rerunning_without_the_spine_keeps_beats_and_rebuilds_chunks(
     assert (again.beats, again.chunks) == (first.beats, first.chunks)
 
 
+def test_unchanged_chunks_keep_their_ids_and_embeddings(
+    ingested: tuple[sqlite3.Connection, Settings, IngestReport],
+) -> None:
+    from storyquest.stores.vector import has_vectors, store_vectors
+
+    conn, settings, _ = ingested
+    first_id = conn.execute("SELECT MIN(id) FROM chunks").fetchone()[0]
+    store_vectors(conn, "m:2", 2, [(first_id, [1.0, 0.0])])
+    run_deterministic(conn, settings, BOOK)  # nothing changed, so nothing is rebuilt
+    assert conn.execute("SELECT MIN(id) FROM chunks").fetchone()[0] == first_id
+    assert has_vectors(conn, BOOK, "m:2")
+
+
 def test_chunk_size_comes_from_settings(
     ingested: tuple[sqlite3.Connection, Settings, IngestReport], tmp_path: Path
 ) -> None:

@@ -16,6 +16,16 @@ def unpack(blob: bytes) -> array[float]:
     return values
 
 
+def has_vectors(conn: sqlite3.Connection, book_id: int, model_id: str) -> bool:
+    """True if at least one of the book's chunks has a vector for this model."""
+    row = conn.execute(
+        "SELECT 1 FROM chunk_embeddings e JOIN chunks c ON c.id = e.chunk_id"
+        " WHERE c.book_id = ? AND e.model_id = ? LIMIT 1",
+        (book_id, model_id),
+    ).fetchone()
+    return row is not None
+
+
 def chunks_without_vectors(
     conn: sqlite3.Connection, book_id: int, model_id: str
 ) -> list[tuple[int, str]]:
@@ -23,7 +33,7 @@ def chunks_without_vectors(
     rows = conn.execute(
         "SELECT c.id, c.text FROM chunks c WHERE c.book_id = :book AND NOT EXISTS ("
         " SELECT 1 FROM chunk_embeddings e WHERE e.chunk_id = c.id AND e.model_id = :model)"
-        " ORDER BY c.id",
+        " ORDER BY c.chapter_idx, c.beat_idx, c.id",
         {"book": book_id, "model": model_id},
     )
     return [(int(r[0]), str(r[1])) for r in rows]

@@ -92,7 +92,7 @@ One pipeline, controlled by config, so evals differ only by the toggles.
 
 The S variants (M1S, M2S, M3S) add sentence evidence: see below. Without an embedder, run the BM25-only variants. Rewrite, rerank and the critic are added later, one at a time, each measured against the golden set.
 
-Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences), the hybrid modes M2 (BM25 plus embeddings fused by reciprocal rank fusion) and M2S (M2 with sentence evidence), and the entity-card modes M3 and M3S (M2 and M2S plus the cards of characters, places and terms the child names, written during ingestion). Hybrid search embeds the child's question per turn and falls back to BM25 with the flag `embedding_error` if the embedding call fails.
+Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences), the hybrid modes M2 (BM25 plus embeddings fused by reciprocal rank fusion) and M2S (M2 with sentence evidence), and the entity-card modes M3 and M3S (M2 and M2S plus the cards of characters, places and terms the child names, written during ingestion). Hybrid search embeds the child's question per turn and falls back to BM25 with the flag `embedding_error` if the embedding call fails, or `no_vectors` if the book has no vectors yet. First measurement on the dev split: M2S 72% (34/47), M3S 68% (32/47). The cards did not help: a short card such as "Akela is the leader of the wolf pack" competes with the book sentences that hold the exact facts (CAN-013, CAN-005 regressed), so M3 and M3S stay experimental until the cards or their use are improved.
 
 ## Guardrails
 

@@ -93,8 +93,9 @@ def build_chunks(
     prepared: Prepared,
     log: Callable[[str], None] = lambda _: None,
 ) -> tuple[int, int]:
-    """Stage 9: cut every beat into chunks. Returns (beats, chunks). Replaces all chunks, and
-    with them their embeddings, so run `embed` afterwards."""
+    """Stage 9: cut every beat into chunks. Returns (beats, chunks). Changed chunks replace all
+    chunks, and with them their embeddings, so run `embed` afterwards; identical chunks are left
+    alone, embeddings included."""
     repo = ContentRepo(conn)
     cleaned = prepared.cleaned
     chunks: list[Chunk] = []
@@ -115,6 +116,9 @@ def build_chunks(
                 Chunk(chapter.idx, beat.idx, i, cleaned.text[a:b], a, b)
                 for i, (a, b) in enumerate(spans)
             )
+    if repo.get_all_chunks(prepared.book.id) == chunks:
+        log(f"chunks   {len(chunks)} unchanged for {total_beats} beats; embeddings kept")
+        return total_beats, len(chunks)
     repo.replace_chunks(prepared.book.id, chunks)
     log(f"chunks   {len(chunks)} written for {total_beats} beats (chapters with no beats skipped)")
     return total_beats, len(chunks)

@@ -132,6 +132,14 @@ def test_if_embedding_fails_the_turn_falls_back_to_keywords(make_ctx: MakeCtx) -
     assert all(p.dense_rank is None for p in result.passages)
 
 
+def test_without_vectors_hybrid_falls_back_to_keywords_and_says_so(make_ctx: MakeCtx) -> None:
+    ctx = replace(make_ctx(ScriptedLLM(answer="He is lame.")), embedder=FakeEmbedder())
+    result = run_turn(ctx, "Why does Shere Khan limp?", START, mode=get_mode("M2"))
+    assert result.reply == "He is lame." and result.passages
+    assert len(result.flags) == 1 and result.flags[0].startswith("no_vectors")
+    assert all(p.dense_rank is None for p in result.passages)
+
+
 def test_the_modes_describe_how_they_search() -> None:
     assert "reciprocal rank fusion" in " ".join(describe_steps(get_mode("M2"), 3))
     assert "reciprocal rank fusion" not in " ".join(describe_steps(get_mode("M1"), 3))

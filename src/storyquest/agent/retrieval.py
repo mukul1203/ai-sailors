@@ -6,6 +6,7 @@ from storyquest.domain.position import Position
 from storyquest.ingestion.entities import first_occurrence
 from storyquest.models.embedder import EmbeddingError
 from storyquest.stores.search import SearchHit, hybrid_search, search_chunks
+from storyquest.stores.vector import has_vectors
 
 MAX_CARDS = 2
 
@@ -62,6 +63,9 @@ def _search(
         except EmbeddingError as e:
             hits = search_chunks(ctx.conn, ctx.book.id, text, position, limit=s.retrieval_top_k)
             return hits, [f"embedding_error:{e}"]
+        if not has_vectors(ctx.conn, ctx.book.id, ctx.embedder.model_id):
+            hits = search_chunks(ctx.conn, ctx.book.id, text, position, limit=s.retrieval_top_k)
+            return hits, ["no_vectors:run `make embed` for this book"]
         hits = hybrid_search(
             ctx.conn,
             ctx.book.id,

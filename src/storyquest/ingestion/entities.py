@@ -102,13 +102,15 @@ def clean_aliases(known: dict[str, Entity]) -> int:
             owners[alias_key] = owners.get(alias_key, 0) + 1
     dropped = 0
     for key, entity in known.items():
-        kept = [
-            a
-            for a in entity.aliases
-            if len(a) >= MIN_ALIAS_CHARS
-            and any(ch.isupper() for ch in a)
-            and owners[entity_key(a)] == 1
-        ]
+        kept = list(
+            {
+                entity_key(a): a
+                for a in reversed(entity.aliases)
+                if len(a) >= MIN_ALIAS_CHARS
+                and any(ch.isupper() for ch in a)
+                and owners[entity_key(a)] == 1
+            }.values()
+        )[::-1]  # one alias per normalised form, the first one wins
         dropped += len(entity.aliases) - len(kept)
         known[key] = replace(entity, aliases=kept)
     return dropped
