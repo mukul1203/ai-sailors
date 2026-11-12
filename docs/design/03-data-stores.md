@@ -22,7 +22,7 @@ Both use WAL mode. All access goes through repository interfaces, so a later mov
 | `beats` | key `(book_id, chapter_idx, idx)`, `title`, `narration`, `clues` (json), `vocabulary` (json), `choice` (json), `spoiler_reveals` (json), `start_char`, `end_char`, `review_status` |
 | `chunks` | `id`, `book_id`, `chapter_idx`, `beat_idx`, `idx`, `text`, `start_char`, `end_char` |
 | `chunks_fts` | FTS5 external-content table over `chunks.text` (porter stemming, BM25), kept in sync by triggers |
-| `chunk_vectors` | Later: `chunk_id`, `embedder_id`, `dim`, vector (via `sqlite-vec`) |
+| `chunk_embeddings` | `chunk_id`, `model_id`, `dim`, `vector` (float32 blob, unit length), one row per chunk and embedding model; deleted with the chunk. Searched with a plain cosine over the visible chunks, which is fast at book scale, so no vector extension is needed |
 | `entities` | `id`, `book_id`, `name`, `aliases` (json), `kind`, `card_text`, `first_chapter_idx`, `first_char` |
 
 Notes:
@@ -30,7 +30,7 @@ Notes:
 - Positions are character offsets into the cleaned text, with chapter index and beat index for cheap filtering.
 - Vectors store the embedder ID and dimension. Switching embedder means a new set of vectors, not a migration.
 - Published beats are immutable per `pipeline_version`. The implemented schema has no `pipeline_version` column yet: it arrives with the first migration that regenerates beats (ingestion, step 7).
-- Built so far: `books`, `chapters`, `beats`, `chunks` and `chunks_fts` (migration `0001_init.sql`) and `names` (`0002_names.sql`: proper names with the offset where each first appears). `ingestion_jobs`, `ingestion_steps`, `entities` and `chunk_vectors` come with the steps that need them. Replacing a book's chapters also removes its beats and chunks (cascade).
+- Built so far: `books`, `chapters`, `beats`, `chunks` and `chunks_fts` (migration `0001_init.sql`) and `names` (`0002_names.sql`: proper names with the offset where each first appears) and `chunk_embeddings` (`0003_embeddings.sql`). `ingestion_jobs`, `ingestion_steps` and `entities` come with the steps that need them. Replacing a book's chapters also removes its beats and chunks (cascade).
 
 ## `app.db`
 
@@ -62,7 +62,7 @@ Because chunks never cross beat boundaries, this is exact. It is applied inside 
 ## Search
 
 - Phase 1: SQLite FTS5 BM25 over `chunks_fts`, filtered by the rule above.
-- Later: dense retrieval with `sqlite-vec`, then hybrid fusion (for example reciprocal rank fusion).
+- Built: dense retrieval over `chunk_embeddings` with the same filter, and hybrid fusion by reciprocal rank fusion (modes M2 and M2S). `make embed BOOK=<id>` computes the vectors; `make ingest` removes them with the chunks, so embed again afterwards.
 
 ## Inspecting the databases
 

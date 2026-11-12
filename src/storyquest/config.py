@@ -32,6 +32,12 @@ class Settings:
     chunk_max_chars: int
     short_chapter_chars: int
     retrieval_top_k: int
+    retrieval_candidates: int
+    rrf_k: int
+    embedding_provider: str
+    embedding_model: str
+    embedding_dim: int
+    embedding_requests_per_minute: int
     generation_max_tokens: int
     max_child_input_chars: int
     data_dir: Path
@@ -39,6 +45,7 @@ class Settings:
     dbviewer_port: int
     llm_base_url: str = field(repr=False)
     llm_api_key: str = field(repr=False)
+    embedding_api_key: str = field(repr=False)
     session_secret: str = field(repr=False)
 
 
@@ -65,15 +72,22 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         llm_max_concurrency=int(get("LLM_MAX_CONCURRENCY", "1")),
         llm_requests_per_minute=int(get("LLM_REQUESTS_PER_MINUTE", "50")),
         llm_timeout_seconds=float(get("LLM_TIMEOUT_SECONDS", "120")),
-        chunk_target_chars=int(get("CHUNK_TARGET_CHARS", "1200")),
+        chunk_target_chars=int(get("CHUNK_TARGET_CHARS", "500")),
         chunk_max_chars=int(get("CHUNK_MAX_CHARS", "1800")),
         short_chapter_chars=int(get("SHORT_CHAPTER_CHARS", "8000")),
-        retrieval_top_k=int(get("RETRIEVAL_TOP_K", "3")),
+        retrieval_top_k=int(get("RETRIEVAL_TOP_K", "6")),
+        retrieval_candidates=int(get("RETRIEVAL_CANDIDATES", "20")),
+        rrf_k=int(get("RRF_K", "60")),
+        embedding_provider=get("EMBEDDING_PROVIDER", "gemini"),
+        embedding_model=get("EMBEDDING_MODEL", "gemini-embedding-001"),
+        embedding_dim=int(get("EMBEDDING_DIM", "768")),
+        embedding_requests_per_minute=int(get("EMBEDDING_REQUESTS_PER_MINUTE", "30")),
         generation_max_tokens=int(get("GENERATION_MAX_TOKENS", "200")),
         max_child_input_chars=int(get("MAX_CHILD_INPUT_CHARS", "300")),
         data_dir=path(get("DATA_DIR", "var")),
         api_port=int(get("API_PORT", "8000")),
         dbviewer_port=int(get("DBVIEWER_PORT", "8001")),
         llm_api_key=get("LLM_API_KEY"),
+        embedding_api_key=get("EMBEDDING_API_KEY") or get("GEMINI_API_KEY"),
         session_secret=get("SESSION_SECRET"),
     )

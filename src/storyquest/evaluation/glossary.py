@@ -97,6 +97,10 @@ LEGEND = [
         "How well a passage matches the question's words. Higher is better. It is not a probability.",
     ),
     (
+        "Hybrid search",
+        "Used by M2 and M2S. Keyword search (BM25) and meaning search (embeddings: numbers that capture what a text is about, so 'cry' matches 'tears') each rank the passages. The two rankings are fused by reciprocal rank fusion: a passage near the top of both lists wins. Each passage shows its rank in both lists.",
+    ),
+    (
         "Gold passage",
         "The passage a person marked as holding the right answer. A green tick shows when a retrieved passage contains it.",
     ),

@@ -33,7 +33,13 @@ def repo(conn: sqlite3.Connection) -> ContentRepo:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return load_settings(tmp_path, environ={"DATA_DIR": str(tmp_path / "data")})
+    # Pinned so the tests do not move when the production chunk size is tuned.
+    environ = {
+        "DATA_DIR": str(tmp_path / "data"),
+        "CHUNK_TARGET_CHARS": "1200",
+        "RETRIEVAL_TOP_K": "3",
+    }
+    return load_settings(tmp_path, environ=environ)
 
 
 @pytest.fixture

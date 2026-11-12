@@ -18,10 +18,11 @@ One command runs the evaluation, judges the replies, writes a report and opens i
 make eval                              # compares M0, M1 and M1S on the dev split
 make eval MODES="M1"                    # only one mode
 make eval MODES="M0 M1 M1S"            # any set of modes
+make eval MODES="M1 M1S M2 M2S"        # compare keyword and hybrid retrieval (needs make embed BOOK=236 first)
 make eval-report RUN=eval/runs/<time>  # reopen an earlier report (no model calls); see: ls eval/runs
 ```
 
-The report explains itself: what each mode does step by step, a results table, a legend of every term, and every question with the replies, the passages the search found, and why each mode passed or failed. Modes are M0 (plain model, no book), M1 (retrieval) and M1S (retrieval plus sentence evidence).
+The report explains itself: what each mode does step by step, a results table, a legend of every term, and every question with the replies, the passages the search found, and why each mode passed or failed. Modes are M0 (plain model, no book), M1 (retrieval), M1S (retrieval plus sentence evidence), M2 and M2S (the same two with hybrid keyword plus meaning retrieval).
 
 Notes:
 

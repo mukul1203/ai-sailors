@@ -13,5 +13,6 @@ Claims from the reply:
 For each claim number N, fill these in this order:
 - claim_N_quote: words copied exactly from inside <passages> that support the claim, or "" if no passage supports it. Never copy from the claim itself.
 - claim_N_supported: true only if the passages say it, or say the same in other words. A claim that only sounds plausible, or that comes from what you know about the book, is false.
+- claim_N_inferred: only when claim_N_supported is false. True if the claim follows in one obvious step from the words you quoted, so that anyone reading those words would agree with it. Guesses, motives, feelings and anything that needs outside knowledge are false. Always false when claim_N_supported is true or the quote is "".
 {fact_rule}
-Example for a different book. Passages: "Mia has a red kite." Claims: 1. Mia has a kite. 2. Mia's kite flies high.{example}
+Example for a different book. Passages: "Mia has a red kite." Claims: 1. Mia has a kite. 2. Mia owns something red. 3. Mia's kite flies high.{example}

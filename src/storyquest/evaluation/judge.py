@@ -4,8 +4,9 @@ Three questions, each in its own call so the 8B model keeps them apart:
 1. Recall and forbidden content: which expected facts does the reply state, and does it contain
    any descriptive forbidden item. Sees the question, the reply and the statements only.
 2. Claims: split the reply into separate factual claims. Sees the reply only.
-3. Faithfulness and precision: is each claim supported by the passages the agent was given, and
-   which expected fact does it state, if any. Sees the passages, the claims and the facts.
+3. Faithfulness and precision: is each claim supported by the passages the agent was given (said
+   there, or following from them in one obvious step, which is reported as "inferred"), and which
+   expected fact does it state, if any. Sees the passages, the claims and the facts.
 
 Every "yes" must come with a quote, and the quote is checked in code: at least 80% of its words
 must occur in the text it should come from (the reply for call 1, the passages for call 3). Models
@@ -35,11 +36,12 @@ _WORDS = re.compile(r"[a-z0-9]+")
 @dataclass(frozen=True)
 class Claim:
     text: str
-    supported: bool  # the judge said yes and its quote checks out in the passages
+    supported: bool  # passes: the passages say it or it is inferred, with a verified quote
     quote: str  # the passage words the judge pointed at
     judge_said_yes: bool
     quote_ok: bool
     fact: int  # number of the expected fact this claim states, 0 for none
+    inferred: bool = False  # counts as supported only because it follows from the quote
 
 
 @dataclass(frozen=True)
@@ -185,6 +187,7 @@ def build_verify_request(
     for i in range(1, len(claims) + 1):
         props[f"claim_{i}_quote"] = {"type": "string"}
         props[f"claim_{i}_supported"] = {"type": "boolean"}
+        props[f"claim_{i}_inferred"] = {"type": "boolean"}
         if facts:
             props[f"claim_{i}_fact"] = {"type": "integer", "minimum": 0, "maximum": len(facts)}
     shown = "\n\n".join(f"Passage {i}:\n{p}" for i, p in enumerate(passages, 1))
@@ -196,14 +199,18 @@ def build_verify_request(
         )
         example = (
             ' Expected facts: 1. Mia owns a kite. Correct: claim_1_quote "Mia has a red kite", '
-            'claim_1_supported true, claim_1_fact 1; claim_2_quote "", claim_2_supported false, '
-            "claim_2_fact 0."
+            "claim_1_supported true, claim_1_inferred false, claim_1_fact 1; "
+            'claim_2_quote "Mia has a red kite", claim_2_supported false, claim_2_inferred true, '
+            'claim_2_fact 0; claim_3_quote "", claim_3_supported false, claim_3_inferred false, '
+            "claim_3_fact 0."
         )
     else:
         fact_block, fact_rule = "", ""
         example = (
-            ' Correct: claim_1_quote "Mia has a red kite", claim_1_supported true; '
-            'claim_2_quote "", claim_2_supported false.'
+            ' Correct: claim_1_quote "Mia has a red kite", claim_1_supported true, '
+            'claim_1_inferred false; claim_2_quote "Mia has a red kite", claim_2_supported false, '
+            'claim_2_inferred true; claim_3_quote "", claim_3_supported false, '
+            "claim_3_inferred false."
         )
     prompt = _template("verify.txt").format(
         question=item.input,
@@ -243,11 +250,20 @@ def _analyse_claims(
     claims = []
     for i, text in enumerate(texts, 1):
         said = bool(v_data.get(f"claim_{i}_supported"))
+        said_inferred = not said and bool(v_data.get(f"claim_{i}_inferred"))
         quote = str(v_data.get(f"claim_{i}_quote") or "")
         ok = _verified(quote, source)
         fact = v_data.get(f"claim_{i}_fact")
         claims.append(
-            Claim(text, said and ok, quote, said, ok, fact if isinstance(fact, int) else 0)
+            Claim(
+                text,
+                (said or said_inferred) and ok,
+                quote,
+                said or said_inferred,
+                ok,
+                fact if isinstance(fact, int) else 0,
+                inferred=said_inferred and ok,
+            )
         )
     return {**out, "claims": claims}
 

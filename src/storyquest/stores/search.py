@@ -1,10 +1,11 @@
-"""BM25 search over chunks with the spoiler filter applied inside the query."""
+"""Search over chunks: BM25 keywords, and hybrid keywords plus meaning. Spoiler filter included."""
 
 import re
 import sqlite3
 from dataclasses import dataclass
 
 from storyquest.domain.position import Position
+from storyquest.stores.vector import dense_search
 
 STOPWORDS = frozenset(
     "a an and are as at be but by did do does for from had has have he her him his how i if in is "
@@ -23,6 +24,8 @@ class SearchHit:
     start_char: int
     end_char: int
     score: float  # higher is better
+    bm25_rank: int | None = None  # 1-based rank in the keyword results (hybrid search only)
+    dense_rank: int | None = None  # 1-based rank in the meaning results (hybrid search only)
 
 
 def to_match_query(text: str) -> str | None:
@@ -63,3 +66,62 @@ def search_chunks(
         },
     )
     return [SearchHit(*tuple(r)) for r in rows]
+
+
+def rrf_fuse(rankings: list[list[int]], k: int) -> dict[int, float]:
+    """Reciprocal rank fusion: each list adds 1 / (k + rank) to the chunks it contains."""
+    scores: dict[int, float] = {}
+    for ranking in rankings:
+        for rank, chunk_id in enumerate(ranking, 1):
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
+def _hits_by_id(conn: sqlite3.Connection, ids: list[int]) -> dict[int, SearchHit]:
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    rows = conn.execute(
+        "SELECT id, chapter_idx, beat_idx, idx, text, start_char, end_char, 0.0"
+        f" FROM chunks WHERE id IN ({marks})",
+        ids,
+    )
+    return {int(r[0]): SearchHit(*tuple(r)) for r in rows}
+
+
+def hybrid_search(
+    conn: sqlite3.Connection,
+    book_id: int,
+    query: str,
+    query_vector: list[float],
+    model_id: str,
+    position: Position,
+    *,
+    limit: int,
+    candidates: int,
+    rrf_k: int,
+) -> list[SearchHit]:
+    """Keywords and meaning each propose `candidates` visible chunks; fusion picks the top."""
+    keyword = search_chunks(conn, book_id, query, position, limit=candidates)
+    meaning = dense_search(conn, book_id, query_vector, position, model_id, limit=candidates)
+    bm25_rank = {h.chunk_id: n for n, h in enumerate(keyword, 1)}
+    dense_rank = {chunk_id: n for n, (chunk_id, _) in enumerate(meaning, 1)}
+    fused = rrf_fuse([[h.chunk_id for h in keyword], [c for c, _ in meaning]], rrf_k)
+    best = sorted(fused, key=lambda c: (-fused[c], c))[:limit]
+    known = {h.chunk_id: h for h in keyword}
+    known.update(_hits_by_id(conn, [c for c in best if c not in known]))
+    return [
+        SearchHit(
+            known[c].chunk_id,
+            known[c].chapter_idx,
+            known[c].beat_idx,
+            known[c].idx,
+            known[c].text,
+            known[c].start_char,
+            known[c].end_char,
+            fused[c],
+            bm25_rank.get(c),
+            dense_rank.get(c),
+        )
+        for c in best
+    ]

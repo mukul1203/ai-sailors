@@ -46,7 +46,7 @@ Plain Python, no agent framework (LangGraph, CrewAI or AutoGen) for the MVP.
 
 1. **Guard:** an empty or too-long message gets a fixed reply and never reaches the model.
 2. **Router:** one small model call (JSON schema, 30 tokens) labels the message `story_question`, `feelings`, `off_topic`, `unsafe`, `injection` or `personal`. Every label except `story_question` gets a fixed, pre-written reply, with no answer written by the model.
-3. **Retrieve (M1 only):** BM25 over chunks up to the child's position, top 3. No hits means a fixed "I don't know that yet" reply and no generation call.
+3. **Retrieve (M1 only):** BM25 over chunks up to the child's position, top 6 (500-character chunks, so about the same text as 3 chunks of 1200; M2S on the dev split passed 70% this way against 64% with the top 3). No hits means a fixed "I don't know that yet" reply and no generation call.
 4. **Generate:** one model call with the persona and rules in `agent/prompts/generate.txt`. The child's text sits between `<child_message>` markers and is declared to be data. M0 sends no passages.
 5. **Output check (no model):** film and cartoon words, and names that first appear in the book after the child's position, replace the reply with a safe one. Words the child used themselves are allowed. The name list comes from the ingestion `names` stage and is a heuristic: a capitalised book term such as "Rules of the Beach" counts as a name, which can cause a harmless over-cautious reply.
 
@@ -90,6 +90,8 @@ One pipeline, controlled by config, so evals differ only by the toggles.
 | M5 (later) | hybrid | yes | yes | yes |
 
 Until an embedder exists, run the BM25-only variants of the same ladder. The MVP ships M0 and M1; rewrite, rerank and the critic are added later, one at a time, each measured against the golden set.
+
+Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences) and the hybrid modes M2 (BM25 plus embeddings fused by reciprocal rank fusion) and M2S (M2 with sentence evidence). Hybrid search embeds the child's question per turn and falls back to BM25 with the flag `embedding_error` if the embedding call fails.
 
 ## Guardrails
 

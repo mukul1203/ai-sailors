@@ -9,12 +9,17 @@ class Mode:
     title: str
     retrieval: bool
     grounded: bool = False  # the model must pick evidence sentences; code looks them up
+    hybrid: bool = False  # search by keywords and by meaning (embeddings), then fuse
 
 
 MODES = {
     "M0": Mode("M0", "Plain model, no book", retrieval=False),
     "M1": Mode("M1", "Retrieval", retrieval=True),
     "M1S": Mode("M1S", "Retrieval + sentence evidence", retrieval=True, grounded=True),
+    "M2": Mode("M2", "Hybrid retrieval", retrieval=True, hybrid=True),
+    "M2S": Mode(
+        "M2S", "Hybrid retrieval + sentence evidence", retrieval=True, grounded=True, hybrid=True
+    ),
 }
 
 
@@ -44,10 +49,16 @@ def describe_steps(mode: Mode, top_k: int) -> list[str]:
         "pre-written reply and the turn ends here.",
     ]
     if mode.retrieval:
+        how = (
+            "BM25 keyword ranking and embedding (meaning) similarity, combined by reciprocal "
+            "rank fusion"
+            if mode.hybrid
+            else "BM25 keyword ranking"
+        )
         steps.append(
-            f"Retrieve: search the book for the {top_k} best-matching passages (BM25 keyword "
-            "ranking). Only text the child has already read can be found, which prevents "
-            'spoilers. If nothing matches, the reply is "I don\'t know that yet".'
+            f"Retrieve: search the book for the {top_k} best-matching passages ({how}). Only "
+            "text the child has already read can be found, which prevents spoilers. If nothing "
+            'matches, the reply is "I don\'t know that yet".'
         )
         steps.append(_GENERATE if mode.grounded else _GENERATE_PLAIN)
     else:

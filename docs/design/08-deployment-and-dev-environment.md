@@ -44,7 +44,7 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `LLM_MAX_CONCURRENCY` | `1` |
 | `LLM_REQUESTS_PER_MINUTE` | `50` (endpoint cap is 60) |
 | `LLM_TIMEOUT_SECONDS` | `120`; how long one model call may take |
-| `CHUNK_TARGET_CHARS` | `1200`; ingestion aims for chunks about this long |
+| `CHUNK_TARGET_CHARS` | `500`; ingestion aims for chunks about this long (smaller chunks make it easier for the model to pick the right evidence sentence) |
 | `CHUNK_MAX_CHARS` | `1800`; a paragraph longer than this is split on sentences |
 | `SHORT_CHAPTER_CHARS` | `8000`; chapters shorter than this are labelled poems |
 | `DATA_DIR` | `var` locally (git-ignored), `/data` in containers |

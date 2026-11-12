@@ -252,7 +252,9 @@ def _claims_html(r: Row, j: Row) -> str:
     body = []
     for c in claims:
         quote = f"&ldquo;{escape(c['quote'])}&rdquo;" if c.get("quote") else ""
-        if c["supported"]:
+        if c["supported"] and c.get("inferred"):
+            sup = f"<span class='ok'>&#10003; inferred</span>, not stated outright: follows from <i>{quote}</i>"
+        elif c["supported"]:
             sup = f"<span class='ok'>&#10003; supported</span> by <i>{quote}</i>"
         elif c.get("judge_said_yes") and not c.get("quote_ok"):
             sup = f"<span class='bad'>&#10007; not counted</span>: the judge said yes, but <i>{quote}</i> is not in the passages"
@@ -265,8 +267,11 @@ def _claims_html(r: Row, j: Row) -> str:
             fact = "<span class='dim'>extra: not one of the expected facts</span>" if facts else ""
         body.append(f"<tr><td>{escape(c['text'])}</td><td>{sup}</td><td>{fact}</td></tr>")
     ok = sum(c["supported"] for c in claims)
+    inferred = sum(bool(c.get("inferred")) for c in claims)
     verdict = "ok" if ok == len(claims) else "bad"
     summary = f"<p class='{verdict}'><b>Faithfulness: {ok} of {len(claims)} claims supported</b> (all are required)"
+    if inferred:
+        summary += f" ({inferred} inferred, please check)"
     if r.get("precision") is not None:
         summary += (
             f" &middot; Precision: {pct(r['precision'])} of the claims state an expected fact"
@@ -292,8 +297,8 @@ def _judge_steps_html(j: Row) -> str:
         "<li><b>Claims.</b> A second call splits the reply into separate factual claims.</li>"
         "<li><b>Faithfulness and precision.</b> A third call gets the passages the model was given, the claims and "
         "the required facts. For each claim it copies the supporting words from the passages (code checks they are "
-        "there), says whether the passages support it, and which required fact it states, if any. Faithfulness is "
-        "the share of supported claims and must be 100%. Precision is the share of claims that state a required "
+        "there), says whether the passages support it or it follows from them in one obvious step (inferred), and which "
+        "required fact it states, if any. Faithfulness is the share of supported or inferred claims and must be 100%. Precision is the share of claims that state a required "
         "fact.</li></ol>"
     ]
     for title, key in (
@@ -307,6 +312,18 @@ def _judge_steps_html(j: Row) -> str:
         if j.get(key):
             parts.append(f"<div class='lbl'>{title}</div><pre>{escape(j[key])}</pre>")
     return "".join(parts) + "</details>"
+
+
+def _ranking(p: Row) -> str:
+    """How a passage was found: BM25 score, or the keyword and meaning ranks in hybrid modes."""
+    kw, dense = p.get("bm25_rank"), p.get("dense_rank")
+    if kw is None and dense is None:
+        return f"BM25 score {p['score']}"
+    found = [
+        f"keywords #{kw}" if kw else "not in the keyword results",
+        f"meaning #{dense}" if dense else "not in the meaning results",
+    ]
+    return "ranked by " + ", ".join(found) + f" (fused score {p['score']:.4f})"
 
 
 def _passages_html(r: Row, retrieves: bool) -> str:
@@ -326,7 +343,7 @@ def _passages_html(r: Row, retrieves: bool) -> str:
         text = escape(p.get("text") or "(text not saved in this older run)")
         blocks.append(
             f"<div class='passage{' gold' if gold else ''}'><div class='pmeta'>Passage {n} &middot; "
-            f"chapter {p['chapter'] + 1}, part B{p['beat'] + 1} &middot; BM25 score {p['score']}{tick}</div><pre>{text}</pre></div>"
+            f"chapter {p['chapter'] + 1}, part B{p['beat'] + 1} &middot; {_ranking(p)}{tick}</div><pre>{text}</pre></div>"
         )
     opened = "" if r["passed"] else " open"
     return f"<details{opened}><summary>Passages retrieved ({len(ps)}), click to read</summary>{''.join(blocks)}</details>"

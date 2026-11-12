@@ -1,7 +1,14 @@
-"""Build the configured LLM client from settings."""
+"""Build the configured LLM client and embedder from settings."""
 
 from storyquest.config import Settings
 from storyquest.models.cache import CachedClient
+from storyquest.models.embedder import (
+    CachedEmbedder,
+    Embedder,
+    EmbeddingError,
+    FakeEmbedder,
+    GeminiEmbedder,
+)
 from storyquest.models.fake import FakeClient
 from storyquest.models.llm import LLMClient, LLMError
 from storyquest.models.openai_compatible import OpenAICompatibleClient
@@ -32,3 +39,24 @@ def build_llm(settings: Settings, *, use_cache: bool = True) -> LLMClient:
     if use_cache:
         client = CachedClient(client, settings.data_dir / "cache" / "llm", settings.llm_model)
     return client
+
+
+def build_embedder(settings: Settings, *, use_cache: bool = True) -> Embedder:
+    if settings.embedding_provider == "fake":
+        return FakeEmbedder(settings.embedding_dim)
+    if settings.embedding_provider != "gemini":
+        raise EmbeddingError(f"unknown EMBEDDING_PROVIDER {settings.embedding_provider!r}")
+    if not settings.embedding_api_key:
+        raise EmbeddingError(
+            "Hybrid retrieval needs an embedding key: set EMBEDDING_API_KEY in .env "
+            "(a Gemini API key from Google AI Studio)"
+        )
+    embedder: Embedder = GeminiEmbedder(
+        settings.embedding_api_key,
+        settings.embedding_model,
+        settings.embedding_dim,
+        requests_per_minute=settings.embedding_requests_per_minute,
+    )
+    if use_cache:
+        embedder = CachedEmbedder(embedder, settings.data_dir / "cache" / "embeddings")
+    return embedder

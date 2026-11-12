@@ -42,7 +42,7 @@ ENV := set -a; \
 .PHONY: help setup doctor llm-ping \
         dev dev-api dev-worker dev-web up down logs ps build \
         test lint format typecheck check check-data \
-        migrate seed admin-user ingest inspect search ask db-shell db-viewer db-reset \
+        migrate seed admin-user ingest embed inspect search ask db-shell db-viewer db-reset \
         eval eval-report \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
@@ -54,7 +54,7 @@ help: ## Show this help
 	@awk 'BEGIN{FS=":.*##"; printf "\nUsage: make \033[36m<target>\033[0m [VAR=value]\n"} \
 	  /^##@/{printf "\n\033[1m%s\033[0m\n", substr($$0,5)} \
 	  /^[a-zA-Z_-]+:.*##/{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-	@printf "\nCommon variables: BOOK=<id> MODE=<M0|M1|M1S> MODES=\"M0 M1 ...\" SPLIT=<dev|test> RUN=<run folder> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name> Q=<question> ARGS=<extra options>\n\n"
+	@printf "\nCommon variables: BOOK=<id> MODE=<M0|M1|M1S|M2|M2S> MODES=\"M0 M1 ...\" SPLIT=<dev|test> RUN=<run folder> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name> Q=<question> ARGS=<extra options>\n\n"
 
 # Creates .env from .env.example if missing, a .venv virtualenv, and installs the project with
 # its dev tools (pip install -e ".[dev]"). Safe to re-run, e.g. after dependencies change.
@@ -172,6 +172,12 @@ admin-user: _need-code ## Create an admin user (prompts for details)
 ingest: _need-code _need-book ## Run ingestion stages: make ingest BOOK=<id> [ARGS="--spine eval/spine_mowgli_brothers.json"]
 	@$(ENV) $(BIN)/storyquest ingest $(BOOK) $(ARGS)
 
+# Computes a meaning vector (embedding) for every chunk that lacks one, with the Gemini API, and
+# stores it in content.db (table chunk_embeddings). Needed once per book, and again after `make
+# ingest` rebuilds chunks, before using hybrid mode M2 or M2S. Needs EMBEDDING_API_KEY in .env.
+embed: _need-code _need-book ## Embed a book's chunks for hybrid search: make embed BOOK=<id>
+	@$(ENV) $(BIN)/storyquest embed $(BOOK) $(ARGS)
+
 # Read-only report from content.db: every chapter with its story/poem label, raw line range and
 # beat and chunk counts. With --chapter N it also lists that chapter's beats and chunks.
 inspect: _need-code _need-book ## Show chapters, beats, chunks: make inspect BOOK=<id> [ARGS="--chapter 0"]
@@ -179,13 +185,14 @@ inspect: _need-code _need-book ## Show chapters, beats, chunks: make inspect BOO
 
 # Runs the search the agent will use, as a child standing at --chapter/--beat (zero-based; the
 # defaults mean the end of the book). Turns the question into word terms, ranks chunks with BM25,
-# and leaves out chunks after the child's position, so spoilers never appear.
+# and leaves out chunks after the child's position, so spoilers never appear. Add ARGS="--hybrid"
+# to also rank by meaning (embeddings) and fuse the two rankings (needs `make embed` first).
 search: _need-code _need-book ## Search as a child: make search BOOK=<id> Q="..." [ARGS="--chapter 0 --beat 1"]
 	@test -n "$(Q)" || { echo "usage: make search BOOK=<id> Q=\"...\" [ARGS=\"--chapter N --beat N\"]"; exit 1; }
 	@$(ENV) $(BIN)/storyquest search $(BOOK) "$(Q)" $(ARGS)
 
 # Asks the story agent one question as a child standing at --chapter/--beat (zero-based), in mode
-# MODE (M0 = plain model, M1 = with retrieved book passages, M1S = M1 plus chosen evidence sentences). Sorts the message with a small
+# MODE (M0 = plain model, M1 = with retrieved book passages, M1S = M1 plus chosen evidence sentences, M2 / M2S = M1 / M1S with hybrid search). Sorts the message with a small
 # model call, then (for story questions) retrieves passages up to the child's position, builds the
 # prompt, calls the model and checks the reply. Prints the answer and what happened at each step;
 # add --verbose to ARGS to see the exact prompts, --no-cache to force fresh model calls.
@@ -221,7 +228,8 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 # every question with the reply, the retrieved passages and why it passed or failed, and opens
 # it in the browser. Everything is saved under eval/runs/<time>/ (one folder per mode plus the
 # report). Items that need a full quest session are skipped. Model answers are cached, so
-# repeat runs are fast. Modes: M0 plain model, M1 retrieval, M1S sentence evidence.
+# repeat runs are fast. Modes: M0 plain model, M1 retrieval, M1S sentence evidence, M2 hybrid retrieval, M2S hybrid +
+# sentence evidence (M2 and M2S need `make embed` first).
 # Add ARGS="--no-judge" for a faster run without the judge, ARGS="--no-open" to not open the
 # browser, ARGS="--category SPO --limit 5" for a subset.
 eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1 M1S"] [SPLIT=dev] [ARGS="..."]

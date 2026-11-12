@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from storyquest.config import Settings
 from storyquest.domain.book import Beat, Book, Chapter
 from storyquest.domain.position import Position
+from storyquest.models.embedder import Embedder
 from storyquest.models.llm import LLMClient
 from storyquest.stores.content_repo import ContentRepo
 
@@ -30,6 +31,7 @@ class AgentContext:
     chapters: list[Chapter]
     beats: dict[int, list[Beat]]
     names: dict[str, int]
+    embedder: Embedder | None = None  # needed by the hybrid modes only
 
     def where(self, position: Position) -> Where:
         chapter = next((c for c in self.chapters if c.idx == position.chapter_idx), None)
@@ -45,7 +47,11 @@ class AgentContext:
 
 
 def load_context(
-    conn: sqlite3.Connection, llm: LLMClient, settings: Settings, book_id: int
+    conn: sqlite3.Connection,
+    llm: LLMClient,
+    settings: Settings,
+    book_id: int,
+    embedder: Embedder | None = None,
 ) -> AgentContext:
     repo = ContentRepo(conn)
     book = repo.get_book(book_id)
@@ -55,4 +61,6 @@ def load_context(
     if not chapters:
         raise AgentError(f"Book {book_id} has not been ingested; run `make ingest` first")
     beats = {c.idx: repo.get_beats(book_id, c.idx) for c in chapters if c.included}
-    return AgentContext(conn, llm, settings, book, chapters, beats, repo.get_names(book_id))
+    return AgentContext(
+        conn, llm, settings, book, chapters, beats, repo.get_names(book_id), embedder
+    )

@@ -13,13 +13,14 @@ from typing import Any
 from storyquest.agent.context import AgentContext
 from storyquest.agent.modes import MODES, Mode
 from storyquest.agent.replies import REPLIES
+from storyquest.agent.retrieval import retrieve
 from storyquest.agent.turn import run_turn
 from storyquest.evaluation.items import GoldItem
 from storyquest.evaluation.judge import evidence_text, judge_item, needs_judging
 from storyquest.evaluation.scoring import decide, score_item
 from storyquest.ingestion.pipeline import load_cleaned
 from storyquest.ingestion.text import Cleaned
-from storyquest.stores.search import SearchHit, search_chunks
+from storyquest.stores.search import SearchHit
 
 Row = dict[str, Any]
 
@@ -33,24 +34,24 @@ def _hit_has_gold(cleaned: Cleaned, item: GoldItem, hit: SearchHit) -> bool:
     return _overlaps(cleaned, item.gold_lines, hit)
 
 
-def _plain_hits(ctx: AgentContext, item: GoldItem) -> list[SearchHit]:
-    return search_chunks(
-        ctx.conn, ctx.book.id, item.input, item.position, limit=ctx.settings.retrieval_top_k
-    )
+def _plain_hits(ctx: AgentContext, item: GoldItem, mode: Mode) -> list[SearchHit]:
+    return retrieve(ctx, mode, item.input, item.position)[0]
 
 
-def _retrieval_hit(ctx: AgentContext, cleaned: Cleaned, item: GoldItem) -> bool | None:
-    """Did plain retrieval put the gold lines in the top passages? Independent of the model."""
+def _retrieval_hit(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) -> bool | None:
+    """Did the mode's search put the gold lines in the top passages? Independent of the model."""
     if not item.gold_lines or not item.input.strip():
         return None
-    return any(_hit_has_gold(cleaned, item, h) for h in _plain_hits(ctx, item))
+    return any(_hit_has_gold(cleaned, item, h) for h in _plain_hits(ctx, item, mode))
 
 
-def _facts_found(ctx: AgentContext, cleaned: Cleaned, item: GoldItem) -> list[bool] | None:
-    """For each expected fact, did plain retrieval find a passage that holds its evidence?"""
+def _facts_found(
+    ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode
+) -> list[bool] | None:
+    """For each expected fact, did the mode's search find a passage that holds its evidence?"""
     if not item.fact_lines or not item.input.strip():
         return None
-    hits = _plain_hits(ctx, item)
+    hits = _plain_hits(ctx, item, mode)
     return [any(_overlaps(cleaned, ranges, h) for h in hits) for ranges in item.fact_lines]
 
 
@@ -71,7 +72,7 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
     if item.skip:
         return row
     result = run_turn(ctx, item.input, item.position, mode=mode)
-    score = score_item(item, result, _retrieval_hit(ctx, cleaned, item))
+    score = score_item(item, result, _retrieval_hit(ctx, cleaned, item, mode))
     row.update(
         route=result.route,
         reply=result.reply,
@@ -81,7 +82,7 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
         unchecked=score.unchecked,
         fact_coverage=score.fact_coverage,
         retrieval_hit=score.retrieval_hit,
-        fact_found=_facts_found(ctx, cleaned, item),
+        fact_found=_facts_found(ctx, cleaned, item, mode),
         passed=score.passed,
         label=score.label,
         calls=len(result.steps),
@@ -96,6 +97,8 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
                 "score": round(p.score, 2),
                 "text": p.text,
                 "has_gold": _hit_has_gold(cleaned, item, p),
+                "bm25_rank": p.bm25_rank,
+                "dense_rank": p.dense_rank,
             }
             for p in result.passages
         ],

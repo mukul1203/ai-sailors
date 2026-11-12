@@ -31,11 +31,13 @@ from storyquest.evaluation.runner import (
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.inspect import render_book, render_hits
 from storyquest.ingestion.pipeline import load_cleaned, run_deterministic
-from storyquest.models.build import build_llm
+from storyquest.models.build import build_embedder, build_llm
+from storyquest.models.embedder import Embedder, EmbeddingError
 from storyquest.models.llm import LLMError, Message
 from storyquest.stores.content_repo import ContentRepo
 from storyquest.stores.db import connect, migrate, migrations_dir
-from storyquest.stores.search import search_chunks
+from storyquest.stores.search import hybrid_search, search_chunks
+from storyquest.stores.vector import chunks_without_vectors, store_vectors
 
 
 def _show_config() -> int:
@@ -110,9 +112,57 @@ def _search(args: argparse.Namespace) -> int:
     if book is None:
         raise IngestionError(f"Book {args.book} is not in the catalog")
     position = Position(args.chapter, args.beat)
-    hits = search_chunks(conn, args.book, args.query, position, limit=args.limit)
+    if args.hybrid:
+        try:
+            embedder = build_embedder(settings, use_cache=not args.no_cache)
+            vector = embedder.embed([args.query], query=True)[0]
+        except EmbeddingError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        hits = hybrid_search(
+            conn,
+            args.book,
+            args.query,
+            vector,
+            embedder.model_id,
+            position,
+            limit=args.limit,
+            candidates=settings.retrieval_candidates,
+            rrf_k=settings.rrf_k,
+        )
+    else:
+        hits = search_chunks(conn, args.book, args.query, position, limit=args.limit)
     print(f"Child at chapter {position.chapter_idx}, beat B{position.beat_idx + 1}")
     print(render_hits(load_cleaned(settings.data_dir, book), hits))
+    return 0
+
+
+def _embedder_for(settings: Settings, modes: list[Mode], *, no_cache: bool) -> Embedder | None:
+    """An embedder only when a selected mode searches by meaning."""
+    if not any(m.hybrid for m in modes):
+        return None
+    return build_embedder(settings, use_cache=not no_cache)
+
+
+def _embed(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    try:
+        embedder = build_embedder(settings, use_cache=not args.no_cache)
+        todo = chunks_without_vectors(conn, args.book, embedder.model_id)
+        if not todo:
+            print(f"Book {args.book}: every chunk already has a {embedder.model_id} vector")
+            return 0
+        vectors = embedder.embed([text for _, text in todo], query=False)
+    except EmbeddingError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    store_vectors(
+        conn,
+        embedder.model_id,
+        embedder.dim,
+        [(cid, v) for (cid, _), v in zip(todo, vectors, strict=True)],
+    )
+    print(f"Book {args.book}: embedded {len(todo)} chunks with {embedder.model_id}")
     return 0
 
 
@@ -120,9 +170,10 @@ def _ask(args: argparse.Namespace) -> int:
     settings, conn = _open_content()
     try:
         llm = build_llm(settings, use_cache=not args.no_cache)
-        ctx = load_context(conn, llm, settings, args.book)
         mode = get_mode(args.mode)
-    except (LLMError, AgentError, ValueError) as e:
+        embedder = _embedder_for(settings, [mode], no_cache=args.no_cache)
+        ctx = load_context(conn, llm, settings, args.book, embedder)
+    except (LLMError, AgentError, EmbeddingError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     position = Position(args.chapter, args.beat)
@@ -166,8 +217,9 @@ def _eval_run(args: argparse.Namespace) -> int:
     try:
         modes = _parse_modes(args.modes)
         llm = build_llm(settings, use_cache=not args.no_cache)
-        ctx = load_context(conn, llm, settings, args.book)
-    except (LLMError, AgentError, ValueError) as e:
+        embedder = _embedder_for(settings, modes, no_cache=args.no_cache)
+        ctx = load_context(conn, llm, settings, args.book, embedder)
+    except (LLMError, AgentError, EmbeddingError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     batch = new_batch_dir(settings.root / "eval" / "runs")
@@ -239,6 +291,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     srch.add_argument("--chapter", type=int, default=999, help="child's chapter (default: all)")
     srch.add_argument("--beat", type=int, default=999, help="child's beat, zero-based")
     srch.add_argument("--limit", type=int, default=5)
+    srch.add_argument("--hybrid", action="store_true", help="keywords plus meaning (embeddings)")
+    srch.add_argument("--no-cache", action="store_true")
+
+    emb = sub.add_parser("embed", help="Compute embedding vectors for a book's chunks")
+    emb.add_argument("book", type=int)
+    emb.add_argument("--no-cache", action="store_true")
 
     ask_agent = sub.add_parser("ask", help="Ask the story agent a question as a child")
     ask_agent.add_argument("book", type=int)
@@ -248,7 +306,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask_agent.add_argument(
         "--mode",
         default="M1",
-        help="M0 plain model, M1 with retrieval, M1S retrieval plus sentence evidence",
+        help="M0 plain, M1 retrieval, M1S +evidence sentences, M2 hybrid, M2S hybrid +evidence",
     )
     ask_agent.add_argument("--verbose", action="store_true", help="show the exact prompts")
     ask_agent.add_argument("--no-cache", action="store_true")
@@ -294,6 +352,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _inspect(args)
     if args.command == "search":
         return _search(args)
+    if args.command == "embed":
+        return _embed(args)
     if args.command == "ask":
         return _ask(args)
     if args.command == "eval":

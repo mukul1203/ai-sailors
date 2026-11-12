@@ -11,13 +11,13 @@ Reading order for any item: **agent pipeline** (what the agent did) → **code s
 | Guard | Empty input gets the `empty` reply. Longer than `MAX_CHILD_INPUT_CHARS` gets `too_long`. No model call. | 300 chars |
 | Router | The model picks one label: `story_question`, `feelings`, `off_topic`, `unsafe`, `injection`, `personal`. Anything except `story_question` returns that label's fixed reply and stops. | max 30 tokens, temperature 0 |
 | Router fallback | If the model output cannot be parsed, the label is `story_question` and the flag `router_unparsed` is set. | |
-| Retrieval (M1 only) | BM25 over chunks, stopwords dropped, terms joined with OR, the spoiler filter inside the query. Zero hits returns `unknown_yet` and flag `no_hits`. | `RETRIEVAL_TOP_K` = 3 |
+| Retrieval (M1 only) | BM25 over chunks, stopwords dropped, terms joined with OR, the spoiler filter inside the query. Zero hits returns `unknown_yet` and flag `no_hits`. | `RETRIEVAL_TOP_K` = 6 |
 | Spoiler filter | A chunk is visible if `chapter < c`, or `chapter == c` and `beat <= b`. | |
-| Generation | One call, temperature 0. M0 gets no passages, M1 gets the top 3 passages. | `GENERATION_MAX_TOKENS` = 200 |
+| Generation | One call, temperature 0. M0 gets no passages, M1 gets the top 6 passages. | `GENERATION_MAX_TOKENS` = 200 |
 | Output check | Reply is replaced by the `careful` reply if it has a banned film word the child didn't use (`disney`, `cartoon`, `movie`, `film`, `king louie`, `bare necessities`), a name that first appears after the child's position (unless the child said it), or is empty. Flags: `banned_term:x`, `later_name:x`, `empty_reply`. | words of 3+ letters |
 | Errors | A model failure returns the `error` reply, route `error`. | |
 
-Modes (`agent/modes.py`): **M0** plain model, no passages. **M1** BM25 retrieval. **M1S** M1 plus grounding: every sentence of the passages is numbered (`[1.2]` = passage 1, sentence 2), and the model returns `{evidence: [ids], answer}` as JSON, ids restricted by the JSON schema to the ones shown, up to 3. Everything else is identical, so the difference between runs is the effect of retrieval or grounding.
+Modes (`agent/modes.py`): **M0** plain model, no passages. **M1** BM25 retrieval. **M1S** M1 plus grounding: every sentence of the passages is numbered (`[1.2]` = passage 1, sentence 2), and the model returns `{evidence: [ids], answer}` as JSON, ids restricted by the JSON schema to the ones shown, up to 3. Everything else is identical, so the difference between runs is the effect of retrieval or grounding. **M2** and **M2S** are M1 and M1S with hybrid retrieval: the top 20 passages by BM25 and the top 20 by embedding cosine similarity (both spoiler-filtered) are fused by reciprocal rank fusion, score $\sum 1/(60 + \text{rank})$ over both lists, and the top 6 go to the model. The report shows each passage's rank in both lists. If the embedding call fails, the turn falls back to BM25 and carries the flag `embedding_error`.
 
 **Grounding check (M1S, `agent/grounding.py`).** The reply becomes `unknown_yet` with flag `ungrounded:<reason>` if:
 
@@ -80,12 +80,13 @@ Faithfulness is checked against the **retrieved passages only**, i.e. the contex
 |---|---|---|
 | Recall call | One call per item that has facts or descriptive entries. Temperature 0, JSON schema, each verdict preceded by a quote from the reply | max 600 tokens |
 | Claim call | The reply is split into short standalone claims. Greetings, encouragement, "I don't know" and statements about what the book does not say are not claims | at most 8 claims |
-| Verify call | For each claim: a quote from the passages, supported true or false, and the number of the expected fact it states (0 for none) | max 1000 tokens (endpoint limit is 1024) |
+| Verify call | For each claim: a quote from the passages, supported true or false, inferred true or false, and the number of the expected fact it states (0 for none) | max 1000 tokens (endpoint limit is 1024) |
 | Quote check | A "yes" counts only if at least **80%** of the words of its quote occur in the text it must come from: the reply for recall and forbidden verdicts, the passages for claim support (case, whitespace and curly quotes normalised). Otherwise it becomes "no". Exact matching was too strict: the judge often trims a quote ("he can go mad" for "He can also go mad"). | quote of 4+ chars, 80% of words |
 | Paraphrase | A paraphrase or synonym counts as saying a fact, and a faithful restatement counts as supported | |
+| Inferred | A claim the passages do not state but that follows from the quoted words in one obvious step (for example "harder to find food" from "he will frighten every head of game, and I have to kill for two") counts as supported and is shown as **inferred** in the report, with the quote it follows from. It needs a verified quote like any other "yes". Guesses, motives, feelings and outside knowledge are not inferences. Added after CAN-005, where a fair inference failed the item | |
 | Recall | **Replaces** the keyword proxy: the share of facts the judge says are stated | |
 | Forbidden | Descriptive entries the judge says the reply violates are added to the violations | |
-| Faithfulness | Supported claims / all claims. Below 1.0 fails the item with the label `unfaithful` | 100% |
+| Faithfulness | Supported or inferred claims / all claims. Below 1.0 fails the item with the label `unfaithful` | 100% |
 | Precision | Supported claims that state an expected fact / all claims. The fact number the judge picks is often wrong, so only whether it picked one is used | reported |
 
 Which items are judged: items that expect an answer and have `must_include`, items with unchecked descriptive entries, and every item whose reply the model wrote from passages (for faithfulness). Everything else keeps the code result. If the judge's answer to a call is not valid JSON, the call is skipped: the recall call falls back to the keyword check (the report says so), and the claim calls leave faithfulness as n/a.
@@ -109,7 +110,7 @@ For items expecting `answer`:
 |---|---|
 | `error` | the model call failed (route `error`) |
 | `wrong_route` | the router sent it somewhere other than `story_question` |
-| `retrieval_miss` | the gold lines were not in the top-3 passages, and the reply was either a deflection or not good enough (M0 failures can carry this label too, because retrieval is measured in both modes) |
+| `retrieval_miss` | the gold lines were not in the top passages (`RETRIEVAL_TOP_K`), and the reply was either a deflection or not good enough (M0 failures can carry this label too, because retrieval is measured in both modes) |
 | `over_deflection` | right route, passages found, but the reply was a fixed non-answer |
 | `leak` | a forbidden term was found |
 | `missing_facts` | none of the above and coverage under 0.5 |

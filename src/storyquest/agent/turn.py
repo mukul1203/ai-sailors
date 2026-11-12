@@ -7,11 +7,12 @@ from storyquest.agent.guard import check_input
 from storyquest.agent.modes import Mode
 from storyquest.agent.output_check import check_reply
 from storyquest.agent.replies import REPLIES
+from storyquest.agent.retrieval import retrieve
 from storyquest.agent.router import classify
 from storyquest.agent.trace import StepTrace, TurnResult
 from storyquest.domain.position import Position
 from storyquest.models.llm import LLMError, LLMResult, Message
-from storyquest.stores.search import search_chunks
+from storyquest.stores.search import SearchHit
 
 
 def _trace(name: str, messages: list[Message], r: LLMResult) -> StepTrace:
@@ -40,11 +41,10 @@ def run_turn(ctx: AgentContext, text: str, position: Position, *, mode: Mode) ->
     if route != "story_question":
         return TurnResult(REPLIES[route], route, mode.name, steps, flags=flags)
 
-    passages = []
+    passages: list[SearchHit] = []
     if mode.retrieval:
-        passages = search_chunks(
-            ctx.conn, ctx.book.id, child, position, limit=ctx.settings.retrieval_top_k
-        )
+        passages, retrieval_flags = retrieve(ctx, mode, child, position)
+        flags.extend(retrieval_flags)
         if not passages:
             flags.append("no_hits")
             return TurnResult(REPLIES["unknown_yet"], route, mode.name, steps, flags=flags)

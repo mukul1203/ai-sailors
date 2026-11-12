@@ -7,7 +7,7 @@ Scope: the boundary between the application and any model provider. Nothing outs
 | Interface | Methods | Current implementation |
 |---|---|---|
 | `LLMClient` | `chat(messages, schema=None, temperature, max_tokens, stream=False)` → text or validated JSON, with token usage | Hosted `Qwen/Qwen3-8B` (vLLM, OpenAI-compatible chat endpoint); also a `fake` provider for tests and offline work |
-| `Embedder` | `embed(texts)` → vectors, `model_id`, `dim` | None (the team endpoint provides no embeddings; BM25 only) |
+| `Embedder` | `embed(texts, query=)` → unit vectors, `model_id`, `dim` | `gemini` (the Gemini embedding API, `gemini-embedding-001`, 768 dimensions), `fake` (tests); wrapped by a disk cache. The team endpoint has none: its `/embeddings` returns 404 "not available in this pilot" |
 | `Reranker` | `rerank(query, passages)` → ordered ids with scores | LLM-based listwise rerank using `LLMClient` |
 
 Implementations are chosen in config. Adding a provider means adding one class.
@@ -22,7 +22,7 @@ Implementations are chosen in config. Adding a provider means adding one class.
 | Output tokens | 512 default, 1,024 max | Always set `max_tokens` explicitly |
 | Errors | 429 and 503 are transient; 400 means a bad request | Retry 429 and 503 with delays of 2, 4 and 8 seconds, then give up and report; never retry 400 |
 
-Embeddings are not provided on these endpoints. The API supports chat, streaming and tool-call responses; the application does the tool execution, retrieval and conversation history.
+Embeddings are not provided on these endpoints, so the embedder is a separate service (the Gemini API, key in `.env` as `EMBEDDING_API_KEY`). Google's free tier may use submitted content to improve its products: acceptable for development and evaluation, and to be revisited (paid tier or a local model) before real children use the app. The API supports chat, streaming and tool-call responses; the application does the tool execution, retrieval and conversation history.
 
 Priorities when requests contend: live child turns first, then eval runs, then ingestion. Because the key is shared with all developers, two processes can still collide; a 429 is then retried, and the disk cache keeps repeated calls off the endpoint; the `fake` provider is available for tests.
 
@@ -59,4 +59,4 @@ reranker:
 ## Open questions
 
 - Does the deployed app get its own key, or share the group key with developers?
-- Where will the separate embeddings service come from, when we add dense retrieval?
+- Production embeddings: paid Gemini tier, or a small local CPU model, instead of the free tier?

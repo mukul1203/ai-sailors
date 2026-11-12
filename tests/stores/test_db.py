@@ -11,7 +11,7 @@ pytestmark = pytest.mark.integration
 def test_migrate_creates_tables_and_is_idempotent(tmp_path: Path) -> None:
     conn = connect(tmp_path / "content.db")
     first = migrate(conn, migrations_dir("content"))
-    assert first == ["0001_init.sql", "0002_names.sql"]
+    assert first == ["0001_init.sql", "0002_names.sql", "0003_embeddings.sql"]
     assert migrate(conn, migrations_dir("content")) == []
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"books", "chapters", "beats", "chunks", "chunks_fts", "names"} <= tables

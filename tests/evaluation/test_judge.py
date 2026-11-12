@@ -58,14 +58,23 @@ def test_the_claims_and_verify_requests(items) -> None:  # type: ignore[no-untyp
 
     messages, schema = build_verify_request(item, ["He is lame."], ["A passage."])
     props = schema["properties"]
-    assert list(props) == ["claim_1_quote", "claim_1_supported", "claim_1_fact"]
+    assert list(props) == [
+        "claim_1_quote",
+        "claim_1_supported",
+        "claim_1_inferred",
+        "claim_1_fact",
+    ]
     assert props["claim_1_fact"]["maximum"] == 2  # two expected facts
     prompt = messages[0]["content"]
     assert "<passages>\nPassage 1:\nA passage.\n</passages>" in prompt
     assert "1. He is lame." in prompt and "1. lame in one foot from birth" in prompt
 
     _, schema2 = build_verify_request(items["OOC-001"], ["It is blue."], ["A passage."])
-    assert list(schema2["properties"]) == ["claim_1_quote", "claim_1_supported"]  # no facts
+    assert list(schema2["properties"]) == [
+        "claim_1_quote",
+        "claim_1_supported",
+        "claim_1_inferred",
+    ]  # no facts
 
 
 class _Router(FakeClient):
@@ -110,6 +119,26 @@ def test_each_claim_is_checked_against_the_passages(items) -> None:  # type: ign
     assert second.judge_said_yes and not second.quote_ok and not second.supported
     assert v.faithfulness == 0.5 and v.precision == 0.5
     assert v.facts_stated == [True, False]
+
+
+def test_an_inferred_claim_passes_only_with_a_real_quote(items) -> None:  # type: ignore[no-untyped-def]
+    verify = {
+        "claim_1_quote": "born lame in one foot",
+        "claim_1_supported": False,
+        "claim_1_inferred": True,
+        "claim_1_fact": 1,
+        "claim_2_quote": "invented words that no passage contains",
+        "claim_2_supported": False,
+        "claim_2_inferred": True,
+        "claim_2_fact": 0,
+    }
+    llm = _Router(RECALL, ["He walks badly.", "He is sad."], verify)
+    v = judge_item(llm, items["CAN-003"], "He walks badly. He is sad.", PASSAGES, [])
+    assert v is not None and v.claims is not None
+    first, second = v.claims
+    assert first.supported and first.inferred
+    assert not second.supported and not second.inferred
+    assert v.faithfulness == 0.5
 
 
 def test_a_reply_without_claims_is_vacuously_faithful(items) -> None:  # type: ignore[no-untyped-def]
