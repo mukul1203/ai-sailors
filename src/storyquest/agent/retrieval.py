@@ -3,11 +3,53 @@
 from storyquest.agent.context import AgentContext, AgentError
 from storyquest.agent.modes import Mode
 from storyquest.domain.position import Position
+from storyquest.ingestion.entities import first_occurrence
 from storyquest.models.embedder import EmbeddingError
 from storyquest.stores.search import SearchHit, hybrid_search, search_chunks
 
+MAX_CARDS = 2
+
+
+def entity_cards(ctx: AgentContext, text: str, position: Position) -> list[SearchHit]:
+    """Cards for the characters, places and terms the child's message names. A card is used
+    only if the child has reached both where the name first appears and the passage the card
+    was written from, so a card cannot spoil anything."""
+    boundary = ctx.where(position).boundary
+    seen = (position.chapter_idx, position.beat_idx)
+    cards = [
+        e
+        for e in ctx.entities
+        if e.first_char < boundary
+        and (e.card_chapter, e.card_beat) <= seen
+        and first_occurrence(text, [e.name, *e.aliases], 0) is not None
+    ]
+    return [
+        SearchHit(
+            chunk_id=-1,
+            chapter_idx=e.card_chapter,
+            beat_idx=e.card_beat,
+            idx=0,
+            text=f"{e.name}: {e.card}",
+            start_char=-1,
+            end_char=-1,
+            score=0.0,
+            source="entity",
+        )
+        for e in cards[:MAX_CARDS]
+    ]
+
 
 def retrieve(
+    ctx: AgentContext, mode: Mode, text: str, position: Position
+) -> tuple[list[SearchHit], list[str]]:
+    """The passages (book text first, then entity cards if the mode uses them) and any flags."""
+    hits, flags = _search(ctx, mode, text, position)
+    if mode.entities and hits:  # a card alone never answers: the book text must back it up
+        hits = [*hits, *entity_cards(ctx, text, position)]
+    return hits, flags
+
+
+def _search(
     ctx: AgentContext, mode: Mode, text: str, position: Position
 ) -> tuple[list[SearchHit], list[str]]:
     """The passages and any flags. Hybrid search falls back to keywords if embedding fails."""

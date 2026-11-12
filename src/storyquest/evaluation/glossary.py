@@ -101,6 +101,10 @@ LEGEND = [
         "Used by M2 and M2S. Keyword search (BM25) and meaning search (embeddings: numbers that capture what a text is about, so 'cry' matches 'tears') each rank the passages. The two rankings are fused by reciprocal rank fusion: a passage near the top of both lists wins. Each passage shows its rank in both lists.",
     ),
     (
+        "Entity card",
+        "Used by M3 and M3S. During ingestion the model writes a short card for each character, place and term (for example 'Akela'), from the first passage that mentions it. When the child's message names one, its card is added after the book passages (up to 2), but only if the child has already reached that passage. Cards are descriptions made from the book, not book text, and are never counted as the gold passage.",
+    ),
+    (
         "Gold passage",
         "The passage a person marked as holding the right answer. A green tick shows when a retrieved passage contains it.",
     ),

@@ -42,7 +42,8 @@ ENV := set -a; \
 .PHONY: help setup doctor llm-ping \
         dev dev-api dev-worker dev-web up down logs ps build \
         test lint format typecheck check check-data \
-        migrate seed demo-data admin-user ingest embed inspect search ask db-shell db-viewer db-reset \
+        migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
+        entities worker embed inspect search ask db-shell db-viewer db-reset \
         eval eval-report \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
@@ -93,7 +94,7 @@ dev: _need-code _need-web ## Run API, worker and web dev server together (hot re
 dev-api: _need-code ## Run the API with reload
 	@$(ENV) $(BIN)/uvicorn storyquest.api.main:app --reload --port "$${API_PORT:-8000}"
 
-# Background process that picks up queued ingestion jobs. Not built yet.
+# Processes queued ingestion jobs. Same as `make worker`.
 dev-worker: _need-code ## Run the ingestion worker
 	@$(ENV) $(BIN)/storyquest worker
 
@@ -181,6 +182,46 @@ admin-user: _need-code ## Create an admin user (prompts for details)
 # store it all in content.db. Re-running rebuilds chunks and keeps beats unless --spine is given.
 ingest: _need-code _need-book ## Run ingestion stages: make ingest BOOK=<id> [ARGS="--spine eval/spine_mowgli_brothers.json"]
 	@$(ENV) $(BIN)/storyquest ingest $(BOOK) $(ARGS)
+
+# Runs the model-based ingestion stages after the deterministic ones: 5 cut each story chapter
+# into beats (the model proposes where scenes start, code decides), 6 write each beat's title,
+# narration, clues, vocabulary and choice (checked by stage 7 and retried), 8 build entity cards.
+# Hand-written and approved beats are kept. Each finished step is recorded, so running it again
+# resumes after a failure. ARGS: --chapter N, --dry-run (preview the beat boundaries), --force,
+# --stage segment|generate|validate|entities, --enqueue (leave it for `make worker`).
+# Then `make review`, `make approve`, `make publish`, and `make embed` for hybrid search.
+ingest-llm: _need-code _need-book ## LLM stages 5-8: make ingest-llm BOOK=<id> [ARGS="--chapter 2 --dry-run"]
+	@$(ENV) $(BIN)/storyquest ingest $(BOOK) --stage llm $(ARGS)
+
+# Which steps finished for a book (with the pipeline version), beats per chapter with how many
+# are approved or flagged, recent worker jobs and the entity count.
+ingest-status: _need-code _need-book ## Show ingestion steps, beats and jobs: make ingest-status BOOK=<id>
+	@$(ENV) $(BIN)/storyquest ingest-status $(BOOK)
+
+# Prints every beat of the book (or --chapter N) as a reviewer reads it: title, narration, clues
+# with the source words behind each, vocabulary, the choice, and any validation flags. Flagged
+# beats come first.
+review: _need-code _need-book ## Read generated beats: make review BOOK=<id> [ARGS="--chapter 2"]
+	@$(ENV) $(BIN)/storyquest review $(BOOK) $(ARGS)
+
+# Approves generated draft beats that have no flags. Flagged beats are left until you approve
+# them on purpose: ARGS="--beat N" (one beat, zero-based) or ARGS="--flagged" (all in the scope).
+approve: _need-code _need-book ## Approve beats: make approve BOOK=<id> [ARGS="--chapter 2 [--beat N | --flagged]"]
+	@$(ENV) $(BIN)/storyquest approve $(BOOK) $(ARGS)
+
+# Marks the book ready when every story chapter has approved beats and chunks; otherwise lists
+# what is missing.
+publish: _need-code _need-book ## Publish a fully approved book: make publish BOOK=<id>
+	@$(ENV) $(BIN)/storyquest publish $(BOOK)
+
+# Lists the entity cards (characters, places, terms) with the line where each first appears.
+entities: _need-code _need-book ## List entity cards: make entities BOOK=<id>
+	@$(ENV) $(BIN)/storyquest entities $(BOOK)
+
+# Processes queued ingestion jobs (`make ingest BOOK=.. ARGS="--stage llm --enqueue"`), one at a
+# time, and waits for more; ARGS="--once" stops when the queue is empty.
+worker: _need-code ## Run queued ingestion jobs: make worker [ARGS="--once"]
+	@$(ENV) $(BIN)/storyquest worker $(ARGS)
 
 # Computes a meaning vector (embedding) for every chunk that lacks one, with the Gemini API, and
 # stores it in content.db (table chunk_embeddings). Needed once per book, and again after `make

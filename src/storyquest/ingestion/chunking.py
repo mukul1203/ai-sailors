@@ -20,7 +20,7 @@ def _trimmed(text: str, a: int, b: int) -> Span | None:
     return (a, b) if a < b else None
 
 
-def _paragraphs(text: str, start: int, end: int) -> list[Span]:
+def paragraph_spans(text: str, start: int, end: int) -> list[Span]:
     spans: list[Span] = []
     pos = start
     for m in _PARAGRAPH_BREAK.finditer(text, start, end):
@@ -64,7 +64,7 @@ def chunk_span(text: str, start: int, end: int, *, target: int, max_len: int) ->
     """Split text[start:end] into chunk spans, in order."""
     chunks: list[Span] = []
     pending: list[Span] = []
-    for a, b in _paragraphs(text, start, end):
+    for a, b in paragraph_spans(text, start, end):
         if b - a > max_len:
             chunks.extend(_pack(pending, target))
             pending = []

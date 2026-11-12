@@ -16,21 +16,21 @@ Both use WAL mode. All access goes through repository interfaces, so a later mov
 | Table | Key columns |
 |---|---|
 | `books` | `id` (Gutenberg id), `title`, `author`, `language`, `age_band`, `summary`, `content_notes`, `visibility`, `status`, `raw_path`, `content_sha256`, `uploaded_by`, `pipeline_version` |
-| `ingestion_jobs` | `id`, `book_id`, `pipeline_version`, `status`, `stage`, `progress_pct`, `error`, timestamps |
-| `ingestion_steps` | `job_id`, `chapter_id?`, `step`, `status`, `input_hash`, `attempts`, `error` |
+| `ingestion_jobs` | `id`, `book_id`, `options` (json: stages, chapter, force, spine), `status` (`queued`, `running`, `done`, `failed`), `message`, `created_at`, `started_at`, `finished_at` |
+| `ingestion_steps` | key `(book_id, chapter_idx, step)` (chapter -1 for the whole book), `pipeline_version`, `input_hash`, `status` (`done` or `failed`), `detail`, `updated_at` |
 | `chapters` | key `(book_id, idx)`, `title`, `kind`, `included`, `start_char`, `end_char` |
-| `beats` | key `(book_id, chapter_idx, idx)`, `title`, `narration`, `clues` (json), `vocabulary` (json), `choice` (json), `spoiler_reveals` (json), `start_char`, `end_char`, `review_status` |
+| `beats` | key `(book_id, chapter_idx, idx)`, `title`, `narration`, `clues` (json) with `clue_quotes` (json, the source words behind each clue), `vocabulary` (json), `choice` (json), `spoiler_reveals` (json), `start_char`, `end_char`, `review_status` (`draft` or `approved`), `source` (`spine` or `llm`), `flags` (json, validation problems), `pipeline_version` |
 | `chunks` | `id`, `book_id`, `chapter_idx`, `beat_idx`, `idx`, `text`, `start_char`, `end_char` |
 | `chunks_fts` | FTS5 external-content table over `chunks.text` (porter stemming, BM25), kept in sync by triggers |
 | `chunk_embeddings` | `chunk_id`, `model_id`, `dim`, `vector` (float32 blob, unit length), one row per chunk and embedding model; deleted with the chunk. Searched with a plain cosine over the visible chunks, which is fast at book scale, so no vector extension is needed |
-| `entities` | `id`, `book_id`, `name`, `aliases` (json), `kind`, `card_text`, `first_chapter_idx`, `first_char` |
+| `entities` | key `(book_id, key)` (lowercase name), `name`, `kind` (`character`, `place`, `term`), `aliases` (json), `card`, `first_char` (where the name first appears in the text), `card_chapter` and `card_beat` (the passage the card was written from) |
 
 Notes:
 
 - Positions are character offsets into the cleaned text, with chapter index and beat index for cheap filtering.
 - Vectors store the embedder ID and dimension. Switching embedder means a new set of vectors, not a migration.
-- Published beats are immutable per `pipeline_version`. The implemented schema has no `pipeline_version` column yet: it arrives with the first migration that regenerates beats (ingestion, step 7).
-- Built so far: `books`, `chapters`, `beats`, `chunks` and `chunks_fts` (migration `0001_init.sql`) and `names` (`0002_names.sql`: proper names with the offset where each first appears) and `chunk_embeddings` (`0003_embeddings.sql`). `ingestion_jobs`, `ingestion_steps` and `entities` come with the steps that need them. Replacing a book's chapters also removes its beats and chunks (cascade).
+- Published beats are never edited in place: a published book refuses the LLM stages unless forced, and approved beats are kept by every rerun. Beats carry the `pipeline_version` that wrote them, but old and new versions are not stored side by side yet: a forced rebuild replaces the beats.
+- Built: `books`, `chapters`, `beats`, `chunks` and `chunks_fts` (migration `0001_init.sql`), `names` (`0002_names.sql`: proper names with the offset where each first appears), `chunk_embeddings` (`0003_embeddings.sql`), and the LLM-stage tables and beat columns above (`0004_llm_stages.sql`). Replacing a book's chapters also removes its beats, chunks, entities and steps (cascade or explicit delete).
 
 ## `app.db`
 

@@ -81,14 +81,22 @@ src/storyquest/
 │   └── book_store.py           BookStore interface and the local-volume version
 ├── catalog/                  upload validation and `catalog import` (doc 01)
 ├── ingestion/                offline pipeline (doc 02)
-│   ├── pipeline.py             runs stages, handles resume and idempotency
-│   ├── worker.py               picks up ingestion_jobs
-│   ├── stages/                 clean, chapters, segment, beats, validate, entities, chunk, screen
-│   └── prompts/                prompt files, versioned with pipeline_version
+│   ├── pipeline.py             stages 1-4 and 9: prepare (verify, clean, chapters, names, spine) and build_chunks
+│   ├── run.py                  the run: LLM stages per chapter, step records, protection of approved beats
+│   ├── segment.py              stage 5: model proposes scene starts, code chooses and validates beats
+│   ├── beatgen.py              stage 6: title, narration, clues with quotes, vocabulary, choice
+│   ├── validate.py             stage 7: quote, vocabulary, length, reading-level and safety checks
+│   ├── entities.py             stage 8: entity cards with first appearance taken from the text
+│   ├── review.py               stages 10-11: approve, publish, the review printout
+│   ├── worker.py               runs queued ingestion_jobs
+│   ├── status.py               `ingest-status` and `entities` printouts
+│   ├── version.py              pipeline_version: hash of prompts, model and settings
+│   ├── chapters.py  chunking.py  names.py  spine.py  text.py  inspect.py
+│   └── prompts/                segment, beat, entities prompts and the safety word list
 ├── agent/                    live agent (doc 04)
 │   ├── turn.py                 orchestrates one child turn
-│   ├── modes.py                M0, M1, M1S, M2, M2S (later M3 to M5) feature flags
-│   ├── retrieval.py            picks keyword or hybrid retrieval for a mode
+│   ├── modes.py                M0, M1, M1S, M2, M2S, M3, M3S (later M4 to M6) feature flags
+│   ├── retrieval.py            keyword or hybrid retrieval for a mode, plus entity cards
 │   ├── router.py               rules plus the classifier prompt
 │   ├── guard.py                input checks and PII scrubbing
 │   ├── rewrite.py  retrieve.py  rerank.py  context.py  generate.py

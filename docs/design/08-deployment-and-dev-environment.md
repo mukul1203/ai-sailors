@@ -48,6 +48,9 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `CHUNK_TARGET_CHARS` | `500`; ingestion aims for chunks about this long (smaller chunks make it easier for the model to pick the right evidence sentence) |
 | `CHUNK_MAX_CHARS` | `1800`; a paragraph longer than this is split on sentences |
 | `SHORT_CHAPTER_CHARS` | `8000`; chapters shorter than this are labelled poems |
+| `BEAT_TARGET_CHARS` / `BEAT_MIN_CHARS` / `BEAT_MAX_CHARS` | `6000` / `2500` / `11000`; size of a generated beat |
+| `SEGMENT_WINDOW_PARAGRAPHS` | `60`; paragraph openings shown to the model per segmentation call |
+| `INGEST_RETRIES` | `2`; how often a beat that fails validation is asked again |
 | `RETRIEVAL_TOP_K` | `6`; passages given to the model per turn |
 | `RETRIEVAL_CANDIDATES` | `20`; candidates taken from each of keyword and meaning search before fusing |
 | `RRF_K` | `60`; reciprocal rank fusion constant |
@@ -123,6 +126,7 @@ The [Makefile](../../Makefile) is the single entry point for developer tasks; `m
 | Data and ingestion | `migrate`, `seed`, `admin-user`, `ingest BOOK=`, `inspect BOOK=`, `db-shell DB=`, `db-viewer DATA=`, `db-reset` |
 | Evaluation | `eval MODES= SPLIT=`, `eval-report RUN=` |
 | Data | `demo-data` (seed, ingest with beats, embed), `embed BOOK=` |
+| LLM ingestion | `ingest-llm BOOK=`, `ingest-status BOOK=`, `review BOOK=`, `approve BOOK=`, `publish BOOK=`, `entities BOOK=`, `worker` |
 | Remote (SSH alias `REMOTE`) | `deploy`, `remote-ps`, `remote-logs`, `remote-restart`, `remote-shell`, `remote-viewer`, `remote-db-tunnel`, `remote-db-pull` |
 | Cleanup | `clean`, `clean-all` |
 

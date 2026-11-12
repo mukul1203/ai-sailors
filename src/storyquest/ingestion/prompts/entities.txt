@@ -1,0 +1,12 @@
+You help build a character guide for the children's book "{title}" by {author}. Below is one passage from it. List the named characters (people and animals), places and special terms or objects that appear in it, at most 8, the most important first. Answer with JSON only.
+
+For each one:
+- name: exactly as written in the passage (for example "Shere Khan"). Never a common word such as "wolf" or "night".
+- kind: character, place or term.
+- aliases: other names used for the same thing in this passage, exactly as written (up to 3), or [].
+- card: 1 or 2 short, friendly sentences for a child, using only what this passage says. Do not say what happens later.
+
+Passage:
+<passage>
+{scene}
+</passage>

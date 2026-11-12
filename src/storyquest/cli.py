@@ -30,7 +30,11 @@ from storyquest.evaluation.runner import (
 )
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.inspect import render_book, render_hits
-from storyquest.ingestion.pipeline import load_cleaned, run_deterministic
+from storyquest.ingestion.pipeline import load_cleaned
+from storyquest.ingestion.review import approve_beats, publish, render_review
+from storyquest.ingestion.run import RunOptions, parse_stages, run_ingestion
+from storyquest.ingestion.status import render_entities, render_status
+from storyquest.ingestion.worker import options_to_json, run_worker
 from storyquest.models.build import build_embedder, build_llm
 from storyquest.models.embedder import Embedder, EmbeddingError
 from storyquest.models.llm import LLMError, Message
@@ -95,8 +99,103 @@ def _catalog_import(args: argparse.Namespace) -> int:
 
 def _ingest(args: argparse.Namespace) -> int:
     settings, conn = _open_content()
-    spine = Path(args.spine) if args.spine else None
-    run_deterministic(conn, settings, args.book, spine_path=spine, log=print)
+    stages = parse_stages(args.stage)
+    options = RunOptions(
+        stages=stages,
+        chapter=args.chapter,
+        force=args.force,
+        dry_run=args.dry_run,
+        spine_path=Path(args.spine) if args.spine else None,
+    )
+    if args.enqueue:
+        repo = ContentRepo(conn)
+        if repo.get_book(args.book) is None:
+            raise IngestionError(f"Book {args.book} is not in the catalog; run `make seed` first")
+        job = repo.enqueue_job(args.book, options_to_json(options))
+        print(f"Queued job {job} for book {args.book}; run `make worker` to process it")
+        return 0
+    llm = None
+    if stages:
+        try:
+            llm = build_llm(settings, use_cache=not args.no_cache)
+        except LLMError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+    report = run_ingestion(conn, settings, llm, args.book, options, log=print)
+    if report.failed:
+        print(f"\n{len(report.failed)} step(s) failed: {', '.join(report.failed)}")
+        print("Fix the cause and run the same command again: finished steps are skipped.")
+        return 1
+    if not args.dry_run:
+        print(
+            f"\nRun `make embed BOOK={args.book}` if you use hybrid search (chunks were rebuilt)."
+        )
+        if stages:
+            print(f"Next: `make review BOOK={args.book}`, then approve and publish.")
+    return 0
+
+
+def _ingest_status(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    print(render_status(conn, settings, args.book))
+    return 0
+
+
+def _review(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    print(render_review(conn, settings.data_dir, args.book, args.chapter))
+    return 0
+
+
+def _approve(args: argparse.Namespace) -> int:
+    _, conn = _open_content()
+    result = approve_beats(
+        conn,
+        args.book,
+        chapter_idx=args.chapter,
+        beat_idx=args.beat,
+        include_flagged=args.flagged,
+    )
+    print(f"Approved {result.approved} beat(s).")
+    if result.flagged_left:
+        print(
+            f"{result.flagged_left} flagged beat(s) were left: read them with `make review`, "
+            "then approve with --beat N or --flagged."
+        )
+    if result.empty_left:
+        print(
+            f"{result.empty_left} beat(s) have no generated content yet (run the generate stage)."
+        )
+    return 0
+
+
+def _publish_book(args: argparse.Namespace) -> int:
+    _, conn = _open_content()
+    problems = publish(conn, args.book)
+    if problems:
+        print("Not published:", file=sys.stderr)
+        for p in problems:
+            print(f"  - {p}", file=sys.stderr)
+        return 1
+    print(f"Book {args.book} is published (status ready).")
+    return 0
+
+
+def _entities(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    print(render_entities(conn, settings, args.book))
+    return 0
+
+
+def _worker(args: argparse.Namespace) -> int:
+    settings, conn = _open_content()
+    try:
+        llm = build_llm(settings, use_cache=not args.no_cache)
+    except LLMError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    handled = run_worker(conn, settings, llm, once=args.once, log=print)
+    print(f"Handled {handled} job(s).")
     return 0
 
 
@@ -277,9 +376,43 @@ def main(argv: Sequence[str] | None = None) -> int:
     imp = catalog.add_parser("import", help="Register books from a folder of book folders")
     imp.add_argument("source")
 
-    ing = sub.add_parser("ingest", help="Run the deterministic ingestion stages for a book")
+    ing = sub.add_parser("ingest", help="Run the ingestion stages for a book")
     ing.add_argument("book", type=int)
     ing.add_argument("--spine", help="Hand-written spine JSON to load as beats")
+    ing.add_argument(
+        "--stage",
+        default="deterministic",
+        help="deterministic (default, no model), llm or all (segment, generate, entities), "
+        "or segment (5), generate (6), validate (7), entities (8); comma-separated",
+    )
+    ing.add_argument("--chapter", type=int, help="only this chapter (zero-based)")
+    ing.add_argument("--force", action="store_true", help="redo finished steps; replace beats")
+    ing.add_argument("--dry-run", action="store_true", help="preview beat boundaries only")
+    ing.add_argument("--enqueue", action="store_true", help="queue the run for the worker")
+    ing.add_argument("--no-cache", action="store_true")
+
+    stat = sub.add_parser("ingest-status", help="Steps, beats and jobs for a book")
+    stat.add_argument("book", type=int)
+
+    rev = sub.add_parser("review", help="Read the beats a human must approve")
+    rev.add_argument("book", type=int)
+    rev.add_argument("--chapter", type=int)
+
+    appr = sub.add_parser("approve", help="Approve generated beats (clean ones unless told)")
+    appr.add_argument("book", type=int)
+    appr.add_argument("--chapter", type=int)
+    appr.add_argument("--beat", type=int, help="one beat (zero-based), even if flagged")
+    appr.add_argument("--flagged", action="store_true", help="also approve flagged beats")
+
+    pub = sub.add_parser("publish", help="Mark a fully approved book ready")
+    pub.add_argument("book", type=int)
+
+    ents = sub.add_parser("entities", help="List a book's entity cards")
+    ents.add_argument("book", type=int)
+
+    work = sub.add_parser("worker", help="Process queued ingestion jobs")
+    work.add_argument("--once", action="store_true", help="stop when the queue is empty")
+    work.add_argument("--no-cache", action="store_true")
 
     insp = sub.add_parser("inspect", help="Show chapters, beats and chunks for a book")
     insp.add_argument("book", type=int)
@@ -348,6 +481,18 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _catalog_import(args)
     if args.command == "ingest":
         return _ingest(args)
+    if args.command == "ingest-status":
+        return _ingest_status(args)
+    if args.command == "review":
+        return _review(args)
+    if args.command == "approve":
+        return _approve(args)
+    if args.command == "publish":
+        return _publish_book(args)
+    if args.command == "entities":
+        return _entities(args)
+    if args.command == "worker":
+        return _worker(args)
     if args.command == "inspect":
         return _inspect(args)
     if args.command == "search":

@@ -51,6 +51,7 @@ def load_spine(path: Path, cleaned: Cleaned, chapters: list[Chapter]) -> tuple[i
             choice=b["choice"],
             spoiler_reveals=b["spoiler_reveals"],
             review_status="approved",
+            source="spine",
         )
         for i, (b, start, end) in enumerate(zip(spine_beats, starts, ends, strict=True))
     ]

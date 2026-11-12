@@ -10,19 +10,21 @@ Scope: turning a catalog book's raw text into chapters, beats, entity cards and 
 
 ## Stages
 
-| # | Stage | How | Output |
-|---|---|---|---|
-| 1 | Verify | Check the stored file's hash against `books.content_sha256` | pass or fail |
-| 2 | Clean | Keep text between the Gutenberg `*** START` and `*** END` markers; normalise quotes and whitespace; keep a map to original offsets | cleaned text |
-| 3 | Detect chapters | Use the Contents list and heading matches; fall back to `chapters_override` on the book record | `chapters` rows with start and end offsets |
-| 4 | Classify chapters | `story`, `poem`, `front`, `back`; only `story` chapters become missions | `kind`, `included` |
-| 5 | Segment beats | LLM proposes paragraph boundaries; code validates that beats form a contiguous partition of the chapter | beat spans |
-| 6 | Generate beats | LLM, JSON-schema output, per beat: narration, clues, vocabulary, choice cards, spoiler reveals | `beats` rows (draft) |
-| 7 | Validate beats | Quotes must appear verbatim in the span; length and reading-level checks; safety screen | pass, flag or retry |
-| 8 | Entity cards | Extract characters and terms with aliases, a short child-friendly card and a `first_appears` position | `entities` rows |
-| 9 | Chunk and index | Paragraph-group chunks that never cross a beat boundary; BM25 index; vectors are added afterwards by `make embed` | `chunks`, FTS index |
-| 10 | Review | A human approves beats for new books (flagged ones first) | beats `approved` |
-| 11 | Publish | Mark the book `ready` | `books.status = ready` |
+| # | Stage | How | Output | Status |
+|---|---|---|---|---|
+| 1 | Verify | Check the stored file's hash against `books.content_sha256` | pass or fail | built |
+| 2 | Clean | Keep text between the Gutenberg `*** START` and `*** END` markers; normalise quotes and whitespace; keep a map to original offsets | cleaned text | built |
+| 3 | Detect chapters | Use the Contents list and heading matches; fall back to `chapters_override` on the book record | `chapters` rows with start and end offsets | built (no override yet) |
+| 4 | Classify chapters | `story`, `poem`, `front`, `back`; only `story` chapters become missions | `kind`, `included` | built (`story` and `poem`) |
+| 5 | Segment beats | LLM proposes paragraph boundaries; code validates that beats form a contiguous partition of the chapter | beat spans | built |
+| 6 | Generate beats | LLM, JSON-schema output, per beat: narration, clues, vocabulary, choice cards, spoiler reveals | `beats` rows (draft) | built |
+| 7 | Validate beats | Quotes must appear verbatim in the span; length and reading-level checks; safety screen | pass, flag or retry | built |
+| 8 | Entity cards | Extract characters and terms with aliases, a short child-friendly card and a `first_appears` position | `entities` rows | built |
+| 9 | Chunk and index | Paragraph-group chunks that never cross a beat boundary; BM25 index; vectors are added afterwards by `make embed` | `chunks`, FTS index | built |
+| 10 | Review | A human approves beats for new books (flagged ones first) | beats `approved` | built (CLI) |
+| 11 | Publish | Mark the book `ready` | `books.status = ready` | built (CLI) |
+
+Stage 1 to 4 and 9 need no model. Chapter 1 of the Jungle Book keeps its hand-written beats (the spine), which start approved and are never overwritten without `--force`; they are also the yardstick for stage 5.
 
 ## Key rules
 
@@ -39,22 +41,44 @@ Scope: turning a catalog book's raw text into chapters, beats, entity cards and 
 - **Faithfulness:** An LLM may rewrite for reading level, but clues and facts must trace to source spans. Any beat whose quotes fail the string check is retried, then flagged for review.
 - **Versioning:** Output is keyed by `pipeline_version` (prompts, model id, chunk settings). A new version writes new rows. Published beats are never edited in place, so a child mid-quest keeps a stable story.
 
+## The LLM stages as built
+
+**Stage 5, segment.** A chapter does not fit in one call, so the model sees `SEGMENT_WINDOW_PARAGRAPHS` numbered paragraph openings (the first 160 characters and a word count) at a time and answers `{"starts": [paragraph numbers]}` for where a new scene begins. Code keeps only valid numbers, then picks the subset of proposed boundaries whose beats are closest to `BEAT_TARGET_CHARS` with every beat between `BEAT_MIN_CHARS` and `BEAT_MAX_CHARS` (a small dynamic program). If no subset fits, it merges too-small beats and splits too-large ones at the paragraph nearest the middle. A chapter shorter than the maximum is one beat and needs no call. An unreadable answer is ignored, so the worst case is a chapter cut by size alone. Measured on chapter 1 against the hand-written spine: 4 of 4 spine boundaries have a generated boundary within 1,500 characters (two exact), with two extra beats.
+
+**Stage 6, generate.** One call per beat, with the scene text (never more than 12,000 characters) and a short peek at the next scene so the model can mark which choice option matches the book. The JSON has title, narration summary, 3 to 5 clues (each with a `quote` copied from the scene and a short `clue`), vocabulary, a choice question and 2 or 3 options with the canon one. `spoiler_reveals` is not generated: it is filled by code from the titles and clues of later beats and the titles of later chapters.
+
+**Stage 7, validate.** Code only. Each clue quote must be a stretch of the scene (case, spacing and curly quotes ignored), vocabulary must occur in the scene, the title and narration have length limits, the choice needs a question and 2 or 3 options with one marked canon, the narration is checked against a provisional reading grade (Flesch-Kincaid at most 8), and a short word list screens the generated text. Problems that asking again can fix (quotes, vocabulary, lengths, safety words, unreadable JSON) trigger up to `INGEST_RETRIES` retries with the problems listed in the prompt. After that, untraceable clues and vocabulary are dropped (so stored clues are always backed by the book) and what is still wrong is stored as readable `flags` on the beat. The screen is minimal and screens only the generated text; the reviewer is the real check.
+
+**Stage 8, entities.** One call per beat lists the named characters, places and terms in it. Code keeps an entity only if its name occurs in the book text, takes `first_char` from the text (never from the model), merges repeats and aliases across beats, and keeps the card from the first beat that mentioned it, so a card cannot describe later events. Modes M3 and M3S use the cards (doc 04, doc 10).
+
+**Stages 10 and 11.** `make review` prints each beat with its clues next to the source words and its flags (flagged beats first). `make approve` approves clean drafts; flagged ones need `--beat N` or `--flagged`, a deliberate act. `make publish` marks the book `ready` only if every story chapter has approved beats and chunks, and otherwise lists what is missing.
+
 ## Idempotency and recovery
 
-- Each step has a key `(book_id, pipeline_version, chapter, step)` and an input hash; if both match a completed step, it is skipped.
+- Each LLM step is recorded per chapter in `ingestion_steps` with the pipeline version and a hash of its input (the chapter text, beat boundaries and the version). A rerun skips a step whose stored hash matches, so it resumes at the chapter that failed; `--force` redoes steps.
+- `pipeline_version` is a short hash of the prompts, the model id, the beat and chunk settings and the safety list, so changing any of them makes old steps stale.
+- Hand-written beats and approved beats are never replaced by a normal run. A published (`ready`) book refuses LLM stages without `--force`. Replacing a book's chapters (the chapter list changed) clears its beats, chunks, entities and steps.
 - LLM calls are cached on disk by request hash, which also saves token quota on reruns.
-- Failures are recorded per step (`ingestion_steps`), not per book, so a rerun resumes at the failed chapter.
-- Concurrent requests for the same book take a lock: one job runs, others wait on its status.
+- A failed step (the model endpoint was down, say) is recorded as `failed`, the run continues with the next chapter, the book is marked `failed`, and the command exits non-zero.
+- `ingestion_jobs` is a simple queue: `--enqueue` adds a job and `make worker` runs queued jobs one at a time. Two workers on one database are not guarded against yet.
+- Chunking (stage 9) rebuilds all chunks and with them the embeddings, so run `make embed` afterwards.
 
 ## CLI
 
 ```
-storyquest ingest <book_id> [--stage N] [--chapter K] [--dry-run] [--force]
+storyquest ingest <book_id> [--stage S] [--chapter K] [--dry-run] [--force] [--enqueue] [--spine FILE]
+storyquest ingest-status <book_id>             # steps, beats per chapter, jobs
 storyquest inspect <book_id> [--chapter K]     # print chapters, beats, chunk counts
-storyquest ingest-status <book_id>
+storyquest review <book_id> [--chapter K]      # read generated beats and their flags
+storyquest approve <book_id> [--chapter K] [--beat N | --flagged]
+storyquest publish <book_id>
+storyquest entities <book_id>
+storyquest worker [--once]
 ```
 
-The admin view triggers the same `run_ingestion(book_id)` by inserting a row into `ingestion_jobs`; a separate worker process picks it up and reports per-stage progress. The UI polls the status.
+`--stage` is `deterministic` (the default, no model), `llm` or `all` (segment, generate, entities), or one or more of `segment` (5), `generate` (6), `validate` (7, a code-only recheck of stored beats), `entities` (8). `--dry-run` previews beat boundaries and compares them with existing beats without writing anything. The Makefile wraps these: `make ingest`, `make ingest-llm`, `make ingest-status`, `make review`, `make approve`, `make publish`, `make entities`, `make worker`.
+
+The admin view will trigger the same `run_ingestion` by inserting a row into `ingestion_jobs`; the worker picks it up. Progress reporting for the UI is not built.
 
 ## Progressive publishing (after the MVP)
 

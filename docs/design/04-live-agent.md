@@ -80,18 +80,19 @@ The critic, rewrite and rerank are not built. Each turn records every model call
 
 One pipeline, controlled by config, so evals differ only by the toggles.
 
-| Mode | Retrieval | Rewrite | Rerank | Critic |
-|---|---|---|---|---|
-| M0 | none (plain LLM, position given in prompt) | no | no | no |
-| M1 | BM25 | no | no | no |
-| M2 | hybrid (needs embedder) | no | no | no |
-| M3 | hybrid | no | yes | no |
-| M4 | hybrid | yes | yes | no |
-| M5 (later) | hybrid | yes | yes | yes |
+| Mode | Retrieval | Entity cards | Rewrite | Rerank | Critic |
+|---|---|---|---|---|---|
+| M0 | none (plain LLM, position given in prompt) | no | no | no | no |
+| M1 | BM25 | no | no | no | no |
+| M2 | hybrid (needs embedder) | no | no | no | no |
+| M3 | hybrid | yes | no | no | no |
+| M4 (later) | hybrid | yes | no | yes | no |
+| M5 (later) | hybrid | yes | yes | yes | no |
+| M6 (later) | hybrid | yes | yes | yes | yes |
 
-Until an embedder exists, run the BM25-only variants of the same ladder. The MVP ships M0 and M1; rewrite, rerank and the critic are added later, one at a time, each measured against the golden set.
+The S variants (M1S, M2S, M3S) add sentence evidence: see below. Without an embedder, run the BM25-only variants. Rewrite, rerank and the critic are added later, one at a time, each measured against the golden set.
 
-Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences) and the hybrid modes M2 (BM25 plus embeddings fused by reciprocal rank fusion) and M2S (M2 with sentence evidence). Hybrid search embeds the child's question per turn and falls back to BM25 with the flag `embedding_error` if the embedding call fails.
+Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences), the hybrid modes M2 (BM25 plus embeddings fused by reciprocal rank fusion) and M2S (M2 with sentence evidence), and the entity-card modes M3 and M3S (M2 and M2S plus the cards of characters, places and terms the child names, written during ingestion). Hybrid search embeds the child's question per turn and falls back to BM25 with the flag `embedding_error` if the embedding call fails.
 
 ## Guardrails
 

@@ -56,6 +56,26 @@ make eval ARGS="--category SPO --limit 5"   # a quick subset
 Everything has a `make` target; `make help` lists them all, and each target has a comment in the
 [Makefile](Makefile) explaining what it does.
 
+## Ingesting a whole book (model-based stages)
+
+`make demo-data` loads chapter 1 of the Jungle Book with its hand-written beats. The other
+chapters get their beats, clues, vocabulary, choices and entity cards from the model, then a human
+reviews them:
+
+```
+make ingest-llm BOOK=236 ARGS="--chapter 2 --dry-run"   # preview where the beats would start
+make ingest-llm BOOK=236                               # all story chapters (slow: one request at a time)
+make ingest-status BOOK=236                            # what finished, what is flagged
+make review BOOK=236 ARGS="--chapter 2"                # read beats, clues next to their source words
+make approve BOOK=236                                  # approve clean drafts (flagged ones need --beat N)
+make publish BOOK=236                                  # ready once every chapter is approved
+make embed BOOK=236                                    # chunks were rebuilt: embed them again
+```
+
+Hand-written and approved beats are never overwritten, finished steps are skipped on a rerun (so
+a failure resumes where it stopped), and `--force` redoes things on purpose. Details and the
+rules the validation applies: [docs/design/02-ingestion-pipeline.md](docs/design/02-ingestion-pipeline.md).
+
 ## Modes
 
 The same agent code runs every mode; only the settings differ.
@@ -67,6 +87,7 @@ The same agent code runs every mode; only the settings differ.
 | M1S | keyword (BM25) | yes: the model picks the numbered sentences it relies on | no |
 | M2 | hybrid: keyword plus meaning, fused by reciprocal rank fusion | no | yes |
 | M2S | hybrid | yes | yes |
+| M3 / M3S | hybrid, plus entity cards for named characters, places and terms | no / yes | yes, and `make ingest-llm` for the cards |
 
 M2S is the best so far (about 70% on the dev split). Hybrid modes need `make embed BOOK=<id>`
 once per book, and again after `make ingest` rebuilds the chunks (`make demo-data` does both).

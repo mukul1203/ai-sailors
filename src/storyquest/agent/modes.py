@@ -10,6 +10,7 @@ class Mode:
     retrieval: bool
     grounded: bool = False  # the model must pick evidence sentences; code looks them up
     hybrid: bool = False  # search by keywords and by meaning (embeddings), then fuse
+    entities: bool = False  # add the cards of characters, places and terms the child names
 
 
 MODES = {
@@ -19,6 +20,15 @@ MODES = {
     "M2": Mode("M2", "Hybrid retrieval", retrieval=True, hybrid=True),
     "M2S": Mode(
         "M2S", "Hybrid retrieval + sentence evidence", retrieval=True, grounded=True, hybrid=True
+    ),
+    "M3": Mode("M3", "Hybrid retrieval + entity cards", True, hybrid=True, entities=True),
+    "M3S": Mode(
+        "M3S",
+        "Hybrid retrieval + entity cards + sentence evidence",
+        retrieval=True,
+        grounded=True,
+        hybrid=True,
+        entities=True,
     ),
 }
 
@@ -60,6 +70,13 @@ def describe_steps(mode: Mode, top_k: int) -> list[str]:
             "text the child has already read can be found, which prevents spoilers. If nothing "
             'matches, the reply is "I don\'t know that yet".'
         )
+        if mode.entities:
+            steps.append(
+                "Entity cards: if the message names a character, place or term from the book, "
+                "its short card (written during ingestion from the first passage that mentions "
+                "it) is added as an extra passage, up to 2. Cards the child has not reached yet "
+                "are never used."
+            )
         steps.append(_GENERATE if mode.grounded else _GENERATE_PLAIN)
     else:
         steps.append(

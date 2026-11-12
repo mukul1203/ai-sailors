@@ -316,6 +316,8 @@ def _judge_steps_html(j: Row) -> str:
 
 def _ranking(p: Row) -> str:
     """How a passage was found: BM25 score, or the keyword and meaning ranks in hybrid modes."""
+    if p.get("source") == "entity":
+        return "entity card: a short description made from the book during ingestion"
     kw, dense = p.get("bm25_rank"), p.get("dense_rank")
     if kw is None and dense is None:
         return f"BM25 score {p['score']}"

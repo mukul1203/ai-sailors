@@ -26,6 +26,8 @@ Row = dict[str, Any]
 
 
 def _overlaps(cleaned: Cleaned, ranges: list[tuple[int, int]], hit: SearchHit) -> bool:
+    if hit.source != "chunk":
+        return False  # entity cards are not book text, so they never hold the gold lines
     first, last = cleaned.line_at(hit.start_char), cleaned.line_at(hit.end_char - 1)
     return any(first <= b and a <= last for a, b in ranges)
 
@@ -99,6 +101,7 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
                 "has_gold": _hit_has_gold(cleaned, item, p),
                 "bm25_rank": p.bm25_rank,
                 "dense_rank": p.dense_rank,
+                "source": p.source,
             }
             for p in result.passages
         ],

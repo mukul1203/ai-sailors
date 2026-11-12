@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from storyquest.config import Settings
-from storyquest.domain.book import Book, Chunk
+from storyquest.domain.book import Book, Chapter, Chunk
 from storyquest.ingestion.chapters import detect_chapters
 from storyquest.ingestion.chunking import chunk_span
 from storyquest.ingestion.errors import IngestionError
@@ -26,6 +26,18 @@ class IngestReport:
     names: int
 
 
+@dataclass(frozen=True)
+class Prepared:
+    book: Book
+    cleaned: Cleaned
+    chapters: list[Chapter]
+    names: int
+
+    @property
+    def stories(self) -> list[Chapter]:
+        return [c for c in self.chapters if c.included]
+
+
 def load_cleaned(data_dir: Path, book: Book) -> Cleaned:
     """Read the stored raw file, check its hash against the book record, and clean it."""
     data = (data_dir / book.raw_path).read_bytes()
@@ -34,14 +46,15 @@ def load_cleaned(data_dir: Path, book: Book) -> Cleaned:
     return clean(data.decode("utf-8-sig"))
 
 
-def run_deterministic(
+def prepare(
     conn: sqlite3.Connection,
     settings: Settings,
     book_id: int,
     *,
     spine_path: Path | None = None,
     log: Callable[[str], None] = lambda _: None,
-) -> IngestReport:
+) -> Prepared:
+    """Stages 1 to 4 and the hand-written beats: verify, clean, chapters, names, spine."""
     repo = ContentRepo(conn)
     book = repo.get_book(book_id)
     if book is None:
@@ -71,11 +84,23 @@ def run_deterministic(
         chapter_idx, spine_beats = load_spine(spine_path, cleaned, chapters)
         repo.replace_beats(book_id, chapter_idx, spine_beats)
         log(f"beats    {len(spine_beats)} loaded from {spine_path.name} into chapter {chapter_idx}")
+    return Prepared(book, cleaned, chapters, len(names))
 
+
+def build_chunks(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    prepared: Prepared,
+    log: Callable[[str], None] = lambda _: None,
+) -> tuple[int, int]:
+    """Stage 9: cut every beat into chunks. Returns (beats, chunks). Replaces all chunks, and
+    with them their embeddings, so run `embed` afterwards."""
+    repo = ContentRepo(conn)
+    cleaned = prepared.cleaned
     chunks: list[Chunk] = []
     total_beats = 0
-    for chapter in stories:
-        beats = repo.get_beats(book_id, chapter.idx)
+    for chapter in prepared.stories:
+        beats = repo.get_beats(prepared.book.id, chapter.idx)
         total_beats += len(beats)
         heading_end = cleaned.text.find("\n", chapter.start_char) + 1  # the title is not story text
         for beat in beats:
@@ -90,6 +115,21 @@ def run_deterministic(
                 Chunk(chapter.idx, beat.idx, i, cleaned.text[a:b], a, b)
                 for i, (a, b) in enumerate(spans)
             )
-    repo.replace_chunks(book_id, chunks)
+    repo.replace_chunks(prepared.book.id, chunks)
     log(f"chunks   {len(chunks)} written for {total_beats} beats (chapters with no beats skipped)")
-    return IngestReport(len(chapters), len(stories), total_beats, len(chunks), len(names))
+    return total_beats, len(chunks)
+
+
+def run_deterministic(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    book_id: int,
+    *,
+    spine_path: Path | None = None,
+    log: Callable[[str], None] = lambda _: None,
+) -> IngestReport:
+    prepared = prepare(conn, settings, book_id, spine_path=spine_path, log=log)
+    beats, chunks = build_chunks(conn, settings, prepared, log)
+    return IngestReport(
+        len(prepared.chapters), len(prepared.stories), beats, chunks, prepared.names
+    )

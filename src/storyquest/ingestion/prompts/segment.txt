@@ -1,0 +1,11 @@
+You help cut a chapter of the children's book "{title}" into scenes for a story game for ages 6 to 9.
+
+Below are paragraphs {first} to {last} of the chapter "{chapter}". Only the opening words of each paragraph are shown. Choose the paragraphs where a NEW scene begins: a change of place, a jump in time, or a new turning point in the story.
+
+Rules:
+- A scene is about {target_words} words long, so choose about {expected} paragraph numbers, or fewer if nothing changes.
+- Never choose a paragraph in the middle of a conversation or an action.
+- Answer with JSON only: {{"starts": [paragraph numbers]}}. Use [] if no new scene begins in this window.
+
+Paragraphs:
+{paragraphs}

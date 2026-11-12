@@ -4,8 +4,10 @@ import json
 import sqlite3
 from typing import Any
 
-from storyquest.domain.book import Beat, Book, Chapter, Chunk
+from storyquest.domain.book import Beat, Book, Chapter, Chunk, Entity
 from storyquest.stores.db import transaction
+
+BOOK_STEP = -1  # chapter index used for steps that concern the whole book
 
 
 class ContentRepo:
@@ -51,11 +53,13 @@ class ContentRepo:
             (status, book_id),
         )
 
-    # chapters (replacing them also removes the book's beats and chunks)
+    # chapters (replacing them also removes the book's beats, chunks, entities and steps)
 
     def replace_chapters(self, book_id: int, chapters: list[Chapter]) -> None:
         with transaction(self._conn):
             self._conn.execute("DELETE FROM chapters WHERE book_id = ?", (book_id,))
+            self._conn.execute("DELETE FROM entities WHERE book_id = ?", (book_id,))
+            self._conn.execute("DELETE FROM ingestion_steps WHERE book_id = ?", (book_id,))
             self._conn.executemany(
                 "INSERT INTO chapters (book_id, idx, title, kind, included, start_char, end_char)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -85,17 +89,34 @@ class ContentRepo:
             )
             self._conn.executemany(
                 "INSERT INTO beats (book_id, chapter_idx, idx, title, narration, clues, vocabulary,"
-                " choice, spoiler_reveals, start_char, end_char, review_status)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " choice, spoiler_reveals, start_char, end_char, review_status, source,"
+                " clue_quotes, flags, pipeline_version)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         book_id, b.chapter_idx, b.idx, b.title, b.narration, json.dumps(b.clues),
                         json.dumps(b.vocabulary), json.dumps(b.choice),
                         json.dumps(b.spoiler_reveals), b.start_char, b.end_char, b.review_status,
+                        b.source, json.dumps(b.clue_quotes), json.dumps(b.flags),
+                        b.pipeline_version,
                     )
                     for b in beats
                 ],
             )  # fmt: skip
+
+    def update_beat(self, book_id: int, beat: Beat) -> None:
+        """Rewrite the content of one existing beat (not its position)."""
+        self._conn.execute(
+            "UPDATE beats SET title = ?, narration = ?, clues = ?, vocabulary = ?, choice = ?,"
+            " spoiler_reveals = ?, review_status = ?, clue_quotes = ?, flags = ?,"
+            " pipeline_version = ? WHERE book_id = ? AND chapter_idx = ? AND idx = ?",
+            (
+                beat.title, beat.narration, json.dumps(beat.clues), json.dumps(beat.vocabulary),
+                json.dumps(beat.choice), json.dumps(beat.spoiler_reveals), beat.review_status,
+                json.dumps(beat.clue_quotes), json.dumps(beat.flags), beat.pipeline_version,
+                book_id, beat.chapter_idx, beat.idx,
+            ),
+        )  # fmt: skip
 
     def get_beats(self, book_id: int, chapter_idx: int) -> list[Beat]:
         rows = self._conn.execute(
@@ -103,6 +124,120 @@ class ContentRepo:
             (book_id, chapter_idx),
         )
         return [_beat(r) for r in rows]
+
+    # entities
+
+    def replace_entities_from_chapter(
+        self, book_id: int, chapter_idx: int, entities: list[Entity]
+    ) -> None:
+        """Drop the cards written from this chapter, then add the given ones."""
+        with transaction(self._conn):
+            self._conn.execute(
+                "DELETE FROM entities WHERE book_id = ? AND card_chapter = ?",
+                (book_id, chapter_idx),
+            )
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO entities (book_id, key, name, kind, aliases, card,"
+                " first_char, card_chapter, card_beat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        book_id, e.key, e.name, e.kind, json.dumps(e.aliases), e.card,
+                        e.first_char, e.card_chapter, e.card_beat,
+                    )
+                    for e in entities
+                ],
+            )  # fmt: skip
+
+    def update_entity_aliases(self, book_id: int, key: str, aliases: list[str]) -> None:
+        self._conn.execute(
+            "UPDATE entities SET aliases = ? WHERE book_id = ? AND key = ?",
+            (json.dumps(aliases), book_id, key),
+        )
+
+    def get_entities(self, book_id: int) -> list[Entity]:
+        rows = self._conn.execute(
+            "SELECT * FROM entities WHERE book_id = ? ORDER BY first_char", (book_id,)
+        )
+        return [
+            Entity(
+                key=r["key"], name=r["name"], kind=r["kind"], card=r["card"],
+                first_char=r["first_char"], aliases=json.loads(r["aliases"]),
+                card_chapter=r["card_chapter"], card_beat=r["card_beat"],
+            )
+            for r in rows
+        ]  # fmt: skip
+
+    # steps (what the pipeline has finished, so a rerun can skip it)
+
+    def get_step(self, book_id: int, chapter_idx: int, step: str) -> sqlite3.Row | None:
+        row: sqlite3.Row | None = self._conn.execute(
+            "SELECT * FROM ingestion_steps WHERE book_id = ? AND chapter_idx = ? AND step = ?",
+            (book_id, chapter_idx, step),
+        ).fetchone()
+        return row
+
+    def record_step(
+        self,
+        book_id: int,
+        chapter_idx: int,
+        step: str,
+        *,
+        pipeline_version: str,
+        input_hash: str,
+        status: str,
+        detail: str = "",
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO ingestion_steps (book_id, chapter_idx, step, pipeline_version,"
+            " input_hash, status, detail) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT (book_id, chapter_idx, step) DO UPDATE SET"
+            " pipeline_version = excluded.pipeline_version, input_hash = excluded.input_hash,"
+            " status = excluded.status, detail = excluded.detail,"
+            " updated_at = CURRENT_TIMESTAMP",
+            (book_id, chapter_idx, step, pipeline_version, input_hash, status, detail),
+        )
+
+    def list_steps(self, book_id: int) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM ingestion_steps WHERE book_id = ? ORDER BY chapter_idx, step",
+            (book_id,),
+        ).fetchall()
+
+    # jobs (queued ingestion runs for the worker)
+
+    def enqueue_job(self, book_id: int, options: dict[str, Any]) -> int:
+        cur = self._conn.execute(
+            "INSERT INTO ingestion_jobs (book_id, options) VALUES (?, ?)",
+            (book_id, json.dumps(options)),
+        )
+        return int(cur.lastrowid or 0)
+
+    def claim_job(self) -> sqlite3.Row | None:
+        """Take the oldest queued job and mark it running, or None if there is none."""
+        with transaction(self._conn):
+            row: sqlite3.Row | None = self._conn.execute(
+                "SELECT * FROM ingestion_jobs WHERE status = 'queued' ORDER BY id LIMIT 1"
+            ).fetchone()
+            if row is None:
+                return None
+            self._conn.execute(
+                "UPDATE ingestion_jobs SET status = 'running', started_at = CURRENT_TIMESTAMP"
+                " WHERE id = ?",
+                (row["id"],),
+            )
+        return row
+
+    def finish_job(self, job_id: int, status: str, message: str = "") -> None:
+        self._conn.execute(
+            "UPDATE ingestion_jobs SET status = ?, message = ?, finished_at = CURRENT_TIMESTAMP"
+            " WHERE id = ?",
+            (status, message, job_id),
+        )
+
+    def list_jobs(self, book_id: int) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM ingestion_jobs WHERE book_id = ? ORDER BY id DESC LIMIT 10", (book_id,)
+        ).fetchall()
 
     # names
 
@@ -169,4 +304,6 @@ def _beat(r: sqlite3.Row) -> Beat:
         start_char=r["start_char"], end_char=r["end_char"], clues=json.loads(r["clues"]),
         vocabulary=json.loads(r["vocabulary"]), choice=choice,
         spoiler_reveals=json.loads(r["spoiler_reveals"]), review_status=r["review_status"],
+        source=r["source"], clue_quotes=json.loads(r["clue_quotes"]),
+        flags=json.loads(r["flags"]), pipeline_version=r["pipeline_version"],
     )  # fmt: skip

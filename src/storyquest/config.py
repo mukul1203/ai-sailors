@@ -31,6 +31,11 @@ class Settings:
     chunk_target_chars: int
     chunk_max_chars: int
     short_chapter_chars: int
+    beat_target_chars: int
+    beat_min_chars: int
+    beat_max_chars: int
+    segment_window_paragraphs: int
+    ingest_retries: int
     retrieval_top_k: int
     retrieval_candidates: int
     rrf_k: int
@@ -75,6 +80,11 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         chunk_target_chars=int(get("CHUNK_TARGET_CHARS", "500")),
         chunk_max_chars=int(get("CHUNK_MAX_CHARS", "1800")),
         short_chapter_chars=int(get("SHORT_CHAPTER_CHARS", "8000")),
+        beat_target_chars=int(get("BEAT_TARGET_CHARS", "6000")),
+        beat_min_chars=int(get("BEAT_MIN_CHARS", "2500")),
+        beat_max_chars=int(get("BEAT_MAX_CHARS", "11000")),
+        segment_window_paragraphs=int(get("SEGMENT_WINDOW_PARAGRAPHS", "60")),
+        ingest_retries=int(get("INGEST_RETRIES", "2")),
         retrieval_top_k=int(get("RETRIEVAL_TOP_K", "6")),
         retrieval_candidates=int(get("RETRIEVAL_CANDIDATES", "20")),
         rrf_k=int(get("RRF_K", "60")),
