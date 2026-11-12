@@ -6,12 +6,15 @@ class Mode:
     """Which agent stages are switched on. One pipeline, different settings."""
 
     name: str
+    title: str
     retrieval: bool
+    grounded: bool = False  # the model must pick evidence sentences; code looks them up
 
 
 MODES = {
-    "M0": Mode("M0", retrieval=False),  # plain model: no book passages
-    "M1": Mode("M1", retrieval=True),  # BM25 retrieval of passages up to the child's position
+    "M0": Mode("M0", "Plain model, no book", retrieval=False),
+    "M1": Mode("M1", "Retrieval", retrieval=True),
+    "M1S": Mode("M1S", "Retrieval + sentence evidence", retrieval=True, grounded=True),
 }
 
 
@@ -20,3 +23,40 @@ def get_mode(name: str) -> Mode:
         return MODES[name.upper()]
     except KeyError:
         raise ValueError(f"Unknown mode {name!r}; choose from {', '.join(MODES)}") from None
+
+
+_GENERATE = (
+    "Answer with evidence: every sentence in the passages is numbered. The model lists up "
+    "to 3 sentence numbers as its evidence, then answers. Code looks the sentences up. If "
+    'the model lists none, the reply is "I don\'t know that yet".'
+)
+_GENERATE_PLAIN = (
+    "Answer: the model writes 2 to 4 simple sentences using only the passages it was given."
+)
+
+
+def describe_steps(mode: Mode, top_k: int) -> list[str]:
+    """What the agent does in this mode, in order, in plain words."""
+    steps = [
+        "Guard: an empty message, or one that is too long, gets a fixed reply. No model is used.",
+        "Router: a small model call labels the message (story question, feelings, off topic, "
+        "unsafe, injection or personal). Anything except a story question gets a fixed, "
+        "pre-written reply and the turn ends here.",
+    ]
+    if mode.retrieval:
+        steps.append(
+            f"Retrieve: search the book for the {top_k} best-matching passages (BM25 keyword "
+            "ranking). Only text the child has already read can be found, which prevents "
+            'spoilers. If nothing matches, the reply is "I don\'t know that yet".'
+        )
+        steps.append(_GENERATE if mode.grounded else _GENERATE_PLAIN)
+    else:
+        steps.append(
+            "Answer: the model writes 2 to 4 simple sentences from its own memory of the book. "
+            "It is not given any passages."
+        )
+    steps.append(
+        "Output check: if the reply mentions films or cartoons the child did not mention, or a "
+        "name that only appears later in the book, it is replaced by a safe reply."
+    )
+    return steps

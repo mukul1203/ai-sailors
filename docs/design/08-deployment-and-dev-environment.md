@@ -115,7 +115,7 @@ The [Makefile](../../Makefile) is the single entry point for developer tasks; `m
 | Run | `dev`, `dev-api`, `dev-worker`, `dev-web`, `up`, `down`, `logs`, `ps`, `build` |
 | Quality | `check-data`, `test`, `lint`, `format`, `typecheck`, `check` |
 | Data and ingestion | `migrate`, `seed`, `admin-user`, `ingest BOOK=`, `inspect BOOK=`, `db-shell DB=`, `db-viewer DATA=`, `db-reset` |
-| Evaluation | `eval MODE= SPLIT=`, `eval-report RUN=`, `eval-compare RUNS=` |
+| Evaluation | `eval MODES= SPLIT=`, `eval-report RUN=` |
 | Remote (SSH alias `REMOTE`) | `deploy`, `remote-ps`, `remote-logs`, `remote-restart`, `remote-shell`, `remote-viewer`, `remote-db-tunnel`, `remote-db-pull` |
 | Cleanup | `clean`, `clean-all` |
 

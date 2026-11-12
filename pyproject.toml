@@ -38,6 +38,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/storyquest/evaluation/html_report.py" = ["E501"]  # long HTML and CSS strings
+"src/storyquest/evaluation/glossary.py" = ["E501"]  # long sentences for the report legend
 
 [tool.mypy]
 strict = true

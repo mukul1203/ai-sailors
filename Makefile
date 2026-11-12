@@ -18,9 +18,9 @@ SERVICE ?=
 # Task parameters
 BOOK ?=
 MODE ?= M1
+MODES ?= M0 M1 M1S
 SPLIT ?= dev
 RUN ?=
-RUNS ?=
 DATA ?=
 DB ?= content
 
@@ -43,7 +43,7 @@ ENV := set -a; \
         dev dev-api dev-worker dev-web up down logs ps build \
         test lint format typecheck check check-data \
         migrate seed admin-user ingest inspect search ask db-shell db-viewer db-reset \
-        eval eval-report eval-judge eval-compare \
+        eval eval-report \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -54,7 +54,7 @@ help: ## Show this help
 	@awk 'BEGIN{FS=":.*##"; printf "\nUsage: make \033[36m<target>\033[0m [VAR=value]\n"} \
 	  /^##@/{printf "\n\033[1m%s\033[0m\n", substr($$0,5)} \
 	  /^[a-zA-Z_-]+:.*##/{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-	@printf "\nCommon variables: BOOK=<id> MODE=<M0..M5> SPLIT=<dev|test> RUN=<run dir> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name> Q=<question> ARGS=<extra options>\n\n"
+	@printf "\nCommon variables: BOOK=<id> MODE=<M0|M1|M1S> MODES=\"M0 M1 ...\" SPLIT=<dev|test> RUN=<run folder> DB=<content|app> DATA=<dir> REMOTE=<ssh alias> SERVICE=<name> Q=<question> ARGS=<extra options>\n\n"
 
 # Creates .env from .env.example if missing, a .venv virtualenv, and installs the project with
 # its dev tools (pip install -e ".[dev]"). Safe to re-run, e.g. after dependencies change.
@@ -185,7 +185,7 @@ search: _need-code _need-book ## Search as a child: make search BOOK=<id> Q="...
 	@$(ENV) $(BIN)/storyquest search $(BOOK) "$(Q)" $(ARGS)
 
 # Asks the story agent one question as a child standing at --chapter/--beat (zero-based), in mode
-# MODE (M0 = plain model, M1 = with retrieved book passages). Sorts the message with a small
+# MODE (M0 = plain model, M1 = with retrieved book passages, M1S = M1 plus chosen evidence sentences). Sorts the message with a small
 # model call, then (for story questions) retrieves passages up to the child's position, builds the
 # prompt, calls the model and checks the reply. Prints the answer and what happened at each step;
 # add --verbose to ARGS to see the exact prompts, --no-cache to force fresh model calls.
@@ -215,33 +215,23 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 
 ##@ Evaluation
 
-# Runs the golden set through the agent in mode MODE (M0 or M1) on SPLIT (dev, test or all), one
-# item at a time, and scores each reply without a model: right kind of behaviour, forbidden words,
-# a keyword proxy for the expected facts, and whether retrieval found the gold passage. Saves
-# results.jsonl, config.json and summary.txt under eval/runs/<mode>-<split>-<time>/. Items that
-# need a full quest session are skipped. The model's answers are cached, so re-runs are fast.
-eval: _need-code ## Run the golden set: make eval MODE=M1 SPLIT=dev [ARGS="--category SPO --limit 5"]
-	@$(ENV) $(BIN)/storyquest eval run --mode $(MODE) --split $(SPLIT) $(ARGS)
+# Runs the golden set through each mode in MODES, one question at a time. Scores every reply
+# (behaviour, forbidden words, required facts via an LLM judge, whether the search found the
+# answer passage), then writes ONE report.html that explains the modes, compares them, and shows
+# every question with the reply, the retrieved passages and why it passed or failed, and opens
+# it in the browser. Everything is saved under eval/runs/<time>/ (one folder per mode plus the
+# report). Items that need a full quest session are skipped. Model answers are cached, so
+# repeat runs are fast. Modes: M0 plain model, M1 retrieval, M1S sentence evidence.
+# Add ARGS="--no-judge" for a faster run without the judge, ARGS="--no-open" to not open the
+# browser, ARGS="--category SPO --limit 5" for a subset.
+eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1 M1S"] [SPLIT=dev] [ARGS="..."]
+	@$(ENV) $(BIN)/storyquest eval run --modes "$(MODES)" --split $(SPLIT) $(ARGS)
 
-# Builds one self-contained report.html inside the run folder: summary cards, pass rate per
-# category, why items failed, and every item expandable with the reply and its scores. Add
-# ARGS="--against <other run>" to show changes from a baseline run.
-eval-report: _need-code ## Build the HTML report for a run: make eval-report RUN=eval/runs/<id> [ARGS="--against eval/runs/<id>"]
-	@test -n "$(RUN)" || { echo "usage: make eval-report RUN=eval/runs/<id>"; exit 1; }
+# Rebuilds report.html from a saved folder under eval/runs/ and opens it again, without any
+# model calls. Useful after the report layout changes or to look at an old run.
+eval-report: _need-code ## Reopen a saved report: make eval-report RUN=eval/runs/<time>
+	@test -n "$(RUN)" || { echo "usage: make eval-report RUN=eval/runs/<time>  (see: ls eval/runs)"; exit 1; }
 	@$(ENV) $(BIN)/storyquest eval report $(RUN) $(ARGS)
-
-# Asks the model to grade the replies in a saved run: which expected facts each reply states,
-# whether it contradicts the book text, and the descriptive forbidden-content rules. Then it
-# recomputes pass or fail and rewrites results.jsonl and summary.txt in that run folder.
-eval-judge: _need-code ## Add LLM judge verdicts to a run: make eval-judge RUN=eval/runs/<id>
-	@test -n "$(RUN)" || { echo "usage: make eval-judge RUN=eval/runs/<id>"; exit 1; }
-	@$(ENV) $(BIN)/storyquest eval judge $(RUN)
-
-# Shows two runs side by side: pass rate per category, then which items one fixed or broke.
-# Pass two run directories, for example the M0 run and the M1 run.
-eval-compare: _need-code ## Compare two runs: make eval-compare RUNS="eval/runs/a eval/runs/b"
-	@test -n "$(RUNS)" || { echo "usage: make eval-compare RUNS=\"eval/runs/a eval/runs/b\""; exit 1; }
-	@$(ENV) $(BIN)/storyquest eval compare $(RUNS)
 
 ##@ Remote server (SSH alias in REMOTE, default "miles")
 

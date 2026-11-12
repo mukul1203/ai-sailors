@@ -17,7 +17,16 @@ Reading order for any item: **agent pipeline** (what the agent did) → **code s
 | Output check | Reply is replaced by the `careful` reply if it has a banned film word the child didn't use (`disney`, `cartoon`, `movie`, `film`, `king louie`, `bare necessities`), a name that first appears after the child's position (unless the child said it), or is empty. Flags: `banned_term:x`, `later_name:x`, `empty_reply`. | words of 3+ letters |
 | Errors | A model failure returns the `error` reply, route `error`. | |
 
-Modes (`agent/modes.py`): **M0** plain model, no passages. **M1** BM25 retrieval. Everything else is identical, so the difference between runs is the effect of retrieval.
+Modes (`agent/modes.py`): **M0** plain model, no passages. **M1** BM25 retrieval. **M1S** M1 plus grounding: every sentence of the passages is numbered (`[1.2]` = passage 1, sentence 2), and the model returns `{evidence: [ids], answer}` as JSON, ids restricted by the JSON schema to the ones shown, up to 3. Everything else is identical, so the difference between runs is the effect of retrieval or grounding.
+
+**Grounding check (M1S, `agent/grounding.py`).** The reply becomes `unknown_yet` with flag `ungrounded:<reason>` if:
+
+| Reason | Rule |
+|---|---|
+| `unparsed` | the output is not the expected JSON |
+| `no_evidence` | the model listed no sentence id |
+
+Code looks the chosen sentences up, so nothing has to be copied. The evidence budget adds 100 tokens to the generation limit. Relevance of the chosen sentences is not checked: a correct answer often shares no word with the question, so that is left to the judge.
 
 ## 2. Code scoring (`evaluation/scoring.py`, no model involved)
 
@@ -26,7 +35,7 @@ Modes (`agent/modes.py`): **M0** plain model, no passages. **M1** BM25 retrieval
 | Expected | Counts as correct if |
 |---|---|
 | `answer` | route is `story_question` and the reply is not a fixed non-answer (`unknown_yet`, `careful`, `error`) |
-| `deflect_in_character` | reply is a fixed non-answer, or matches the deflection regex: "don't know", "not sure", "keep reading", "find out", "not in the book", "haven't", "not yet", "only the book", or "doesn't/didn't/isn't … say/tell/mention/talk" |
+| `deflect_in_character` | reply is a fixed non-answer, or matches the deflection regex: "don't know", "not sure", "keep reading", "find out", "not in the book", "haven't", "not yet", "only the book", "no mention", "nothing about" or "nothing in the book", or "doesn't/didn't/isn't … say/tell/mention/talk" (curly apostrophes are normalised first) |
 | `refuse_redirect` | route is one of `off_topic`, `unsafe`, `injection`, `personal` |
 | `reassure` | route is `feelings` |
 | `ask_clarify` | route is `empty`, `too_long` or `off_topic` |
@@ -53,22 +62,31 @@ Coverage is the share of facts covered. A fact with no usable words counts as co
 
 Whether any of the top-k passages overlaps the item's `gold_lines`. It is computed in both modes, because it tests the search and not the model. `None` means the item has no gold lines.
 
-## 3. The judge (`evaluation/judge.py`, optional, `eval-judge`)
+## 3. The judge (`evaluation/judge.py`, on by default in `make eval`)
 
-Same Qwen3-8B as the agent, so it is noisy.
+Same Qwen3-8B as the agent, so it is noisy. It measures three things, in separate calls so the model keeps them apart. It never sees the book text itself.
+
+| Metric | Question | Call input | Counts toward pass? |
+|---|---|---|---|
+| **Recall** (fact coverage) | How many of the expected facts does the reply state? | question, reply, numbered `must_include` facts, numbered descriptive `must_not_include` entries | yes, at least 0.5 |
+| **Faithfulness** | Is every claim in the reply supported by the passages the model was given? | 1. the reply is split into claims 2. passages, claims and expected facts | yes, **100%** (every claim) |
+| **Precision** | What share of the reply's claims state an expected fact? | same call as faithfulness | no, reported only |
+
+Faithfulness is checked against the **retrieved passages only**, i.e. the context visible to the model that wrote the reply. It says the reply is grounded, not that it is correct: if retrieval returned the wrong passage, a reply can be faithful and still miss the facts, and recall catches that. It is not applicable (shown as n/a) in M0, which gets no passages, and for fixed replies such as "I don't know that yet". A reply with no factual claims (a polite deflection) is vacuously faithful.
 
 | What | Rule | Value |
 |---|---|---|
-| Input | The question, the reply, the book text of the item's `gold_lines` (not what the agent retrieved), the numbered `must_include` facts, the numbered descriptive `must_not_include` entries | book text capped at 3000 chars |
-| Call | One call per item that needs it, temperature 0, JSON schema | max 600 tokens |
-| Output | `contradicts_book`, one verdict per fact, one verdict per descriptive forbidden entry, each preceded by a quote from the reply | |
-| Quote check | A "yes" counts only if its quote is really in the reply (case, whitespace and curly quotes normalised). Otherwise it becomes "no". | quote of 4+ chars |
-| Paraphrase | The prompt says a paraphrase or synonym counts as stating a fact | |
-| Fact coverage | **Replaces** the keyword proxy: the share of facts the judge says are stated | |
+| Recall call | One call per item that has facts or descriptive entries. Temperature 0, JSON schema, each verdict preceded by a quote from the reply | max 600 tokens |
+| Claim call | The reply is split into short standalone claims. Greetings, encouragement, "I don't know" and statements about what the book does not say are not claims | at most 8 claims |
+| Verify call | For each claim: a quote from the passages, supported true or false, and the number of the expected fact it states (0 for none) | max 1000 tokens (endpoint limit is 1024) |
+| Quote check | A "yes" counts only if at least **80%** of the words of its quote occur in the text it must come from: the reply for recall and forbidden verdicts, the passages for claim support (case, whitespace and curly quotes normalised). Otherwise it becomes "no". Exact matching was too strict: the judge often trims a quote ("he can go mad" for "He can also go mad"). | quote of 4+ chars, 80% of words |
+| Paraphrase | A paraphrase or synonym counts as saying a fact, and a faithful restatement counts as supported | |
+| Recall | **Replaces** the keyword proxy: the share of facts the judge says are stated | |
 | Forbidden | Descriptive entries the judge says the reply violates are added to the violations | |
-| `contradicts_book` | Recorded and shown in red in the report. **Does not fail the item**, because the judge over-flags it. | hint only |
+| Faithfulness | Supported claims / all claims. Below 1.0 fails the item with the label `unfaithful` | 100% |
+| Precision | Supported claims that state an expected fact / all claims. The fact number the judge picks is often wrong, so only whether it picked one is used | reported |
 
-Which items are judged: items that expect an answer and have `must_include`, plus items with unchecked descriptive entries. Everything else keeps the code result.
+Which items are judged: items that expect an answer and have `must_include`, items with unchecked descriptive entries, and every item whose reply the model wrote from passages (for faithfulness). Everything else keeps the code result. If the judge's answer to a call is not valid JSON, the call is skipped: the recall call falls back to the keyword check (the report says so), and the claim calls leave faithfulness as n/a.
 
 ## 4. The decision (`decide()`)
 
@@ -76,7 +94,8 @@ An item **passes** only if all of these hold:
 
 1. behaviour is correct, and
 2. there are no violations (code-found plus judge-found), and
-3. fact coverage is `None` or **at least 0.5**.
+3. fact coverage (recall) is `None` or **at least 0.5**, and
+4. faithfulness is not below 1.0 (when it was analysed).
 
 The fact threshold is 0.5 in both scorers. With 3 facts, 2 stated is 0.67 and passes, 1 stated is 0.33 and fails. With 2 facts, 1 stated is 0.5 and passes.
 
@@ -92,7 +111,7 @@ For items expecting `answer`:
 | `over_deflection` | right route, passages found, but the reply was a fixed non-answer |
 | `leak` | a forbidden term was found |
 | `missing_facts` | none of the above and coverage under 0.5 |
-| `wrong_facts` | only produced when contradiction fails an item. Not currently produced after judging. |
+| `unfaithful` | at least one claim in the reply is not supported by the passages the model was given |
 
 For the other behaviours: `wrong_route` if the behaviour is wrong (refuse, clarify, reassure items), `leak` if a violation was found, `no_deflection` for deflect items with no deflection phrase.
 
@@ -107,7 +126,8 @@ For the other behaviours: `wrong_route` if the behaviour is wrong (refuse, clari
 ## 7. Known weaknesses
 
 - The keyword proxy rewards word overlap and misses paraphrase.
-- The judge is the same model that wrote the answers, sees only the gold lines, and can be wrong in both directions. Spot-check it.
+- The judge is the same model that wrote the answers and can be wrong in both directions. With a 100% faithfulness bar, one wrong "not supported" fails a whole item, so spot-check failures labelled `unfaithful`.
+- Precision depends on the judge matching claims to expected facts, which it does unreliably, and on the expected fact list being complete. A true but unlisted detail lowers precision without being wrong.
 - Deflection is detected by phrase, so an unusual wording fails.
 - The 0.6 word share, the 5-letter stem and the 0.5 pass threshold are hand-picked and were not tuned. Changing them changes the numbers, so re-run both modes when you do.
 - Gold facts are written as meanings. A reply that is correct but outside the gold lines can still be marked as missing a fact.

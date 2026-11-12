@@ -3,7 +3,7 @@
 from collections import Counter
 from statistics import mean
 
-from storyquest.evaluation.runner import Row, pass_rates
+from storyquest.evaluation.runner import Row, faithfulness_counts, mean_precision, pass_rates
 
 
 def _pct(a: int, b: int) -> str:
@@ -37,8 +37,17 @@ def summarize(config: Row, rows: list[Row]) -> str:
     coverage = [r["fact_coverage"] for r in ran if r["fact_coverage"] is not None]
     if coverage:
         how = "LLM judge" if config.get("judged") else "keyword proxy"
-        out.append(f"Fact coverage ({how}, answer items): mean {mean(coverage):.2f}")
+        out.append(f"Recall, fact coverage ({how}, answer items): mean {mean(coverage):.2f}")
     leaks = [r for r in ran if r["violations"]]
+    ok, analysed = faithfulness_counts(ran)
+    if analysed:
+        out.append(
+            f"Faithfulness: {ok} of {analysed} replies fully supported by their passages "
+            "(100% required)"
+        )
+    precision = mean_precision(ran)
+    if precision is not None:
+        out.append(f"Precision (reported, not required): mean {precision:.2f}")
     out.append(f"Forbidden terms found in replies: {len(leaks)} items")
     if ran:
         out.append(
@@ -77,35 +86,4 @@ def summarize(config: Row, rows: list[Row]) -> str:
         ]
     if skipped:
         out.append("Skipped: " + ", ".join(f"{r['id']}" for r in skipped))
-    return "\n".join(out)
-
-
-def compare(a: tuple[Row, list[Row]], b: tuple[Row, list[Row]]) -> str:
-    (ca, ra), (cb, rb) = a, b
-    na, nb = f"{ca['mode']} ({ca['split']})", f"{cb['mode']} ({cb['split']})"
-    rates_a, rates_b = pass_rates(ra), pass_rates(rb)
-    out = [f"{na}  vs  {nb}", "", f"{'':8}{na:>18}{nb:>18}"]
-    for cat in rates_a.keys() | rates_b.keys():
-        pa, pb = rates_a.get(cat, (0, 0)), rates_b.get(cat, (0, 0))
-        out.append(f"{cat:8}{_pct(*pa):>18}{_pct(*pb):>18}")
-    tot_a = (sum(p for p, _ in rates_a.values()), sum(n for _, n in rates_a.values()))
-    tot_b = (sum(p for p, _ in rates_b.values()), sum(n for _, n in rates_b.values()))
-    out.append(f"{'overall':8}{_pct(*tot_a):>18}{_pct(*tot_b):>18}")
-
-    by_id_a = {r["id"]: r for r in ra if not r["skipped"]}
-    by_id_b = {r["id"]: r for r in rb if not r["skipped"]}
-    fixed, regressed = [], []
-    for item_id in by_id_a.keys() & by_id_b.keys():
-        was, now = bool(by_id_a[item_id]["passed"]), bool(by_id_b[item_id]["passed"])
-        if not was and now:
-            fixed.append(item_id)
-        elif was and not now:
-            regressed.append(item_id)
-    out += [
-        "",
-        f"Pass in {cb['mode']} but not in {ca['mode']}: " + (", ".join(sorted(fixed)) or "none"),
-    ]
-    out.append(
-        f"Pass in {ca['mode']} but not in {cb['mode']}: " + (", ".join(sorted(regressed)) or "none")
-    )
     return "\n".join(out)

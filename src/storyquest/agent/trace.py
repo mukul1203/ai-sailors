@@ -25,3 +25,4 @@ class TurnResult:
     steps: list[StepTrace] = field(default_factory=list)
     passages: list[SearchHit] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
+    evidence: str = ""  # the text the model pointed at, in the modes that ask for it

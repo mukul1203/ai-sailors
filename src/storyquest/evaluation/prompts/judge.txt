@@ -1,7 +1,12 @@
-You are a careful, strict grader. A helper answered a child's question about a book. Grade only what is asked, using only the book text and the statements given. Answer with JSON only.
+You are a careful, strict grader. A helper (the REPLY) answered a child's question about a book. You grade only what the REPLY says. Answer with JSON only.
 
 Question: {question}
 
-The helper's reply:
+REPLY (the only text you may quote from):
+<reply>
 {reply}
-{evidence_section}{facts_section}{forbidden_section}
+</reply>
+{facts_section}{forbidden_section}
+Rules for every quote field:
+- Copy the words from inside <reply> exactly as written. Never quote the question or the numbered items.
+- If the REPLY does not contain it, the quote is "" and the answer is false.

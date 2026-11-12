@@ -2,6 +2,7 @@
 
 from storyquest.agent.context import AgentContext
 from storyquest.agent.generate import build_messages, generate
+from storyquest.agent.grounding import schema_for, verify
 from storyquest.agent.guard import check_input
 from storyquest.agent.modes import Mode
 from storyquest.agent.output_check import check_reply
@@ -50,15 +51,28 @@ def run_turn(ctx: AgentContext, text: str, position: Position, *, mode: Mode) ->
 
     messages = build_messages(ctx, mode, where, child, passages)
     try:
-        result = generate(ctx, messages)
+        result = generate(
+            ctx,
+            messages,
+            schema=schema_for(passages) if mode.grounded else None,
+        )
     except LLMError as e:
         flags.append(f"llm_error:generate:{e}")
         return TurnResult(REPLIES["error"], "error", mode.name, steps, passages, flags)
     steps.append(_trace("generate", messages, result))
 
     reply = result.text
+    evidence = ""
+    if mode.grounded:
+        answer, problem, evidence = verify(reply, passages)
+        if answer is None:
+            flags.append(f"ungrounded:{problem}")
+            return TurnResult(
+                REPLIES["unknown_yet"], route, mode.name, steps, passages, flags, evidence
+            )
+        reply = answer
     problems = check_reply(reply, child, ctx.names, where.boundary)
     if problems or not reply:
         flags.extend(problems or ["empty_reply"])
         reply = REPLIES["careful"]
-    return TurnResult(reply, route, mode.name, steps, passages, flags)
+    return TurnResult(reply, route, mode.name, steps, passages, flags, evidence)

@@ -12,25 +12,22 @@ make seed
 make ingest BOOK=236 ARGS="--spine eval/spine_mowgli_brothers.json"
 ```
 
-Each evaluation, in this order:
+One command runs the evaluation, judges the replies, writes a report and opens it in your browser:
 
 ```
-make eval MODE=M0 SPLIT=dev        # run the golden set through the agent; prints a summary
-make eval MODE=M1 SPLIT=dev
-ls eval/runs                       # run folders are named <mode>-<split>-<YYYYMMDD-HHMMSS>
-make eval-judge RUN=eval/runs/M1-dev-<timestamp>      # optional: LLM judge for facts and descriptive rules
-make eval-report RUN=eval/runs/M1-dev-<timestamp> ARGS="--against eval/runs/M0-dev-<timestamp>"
-open eval/runs/M1-dev-<timestamp>/report.html         # macOS; otherwise open the file in a browser
-make eval-compare RUNS="eval/runs/M0-dev-<timestamp> eval/runs/M1-dev-<timestamp>"   # text version
+make eval                              # compares M0, M1 and M1S on the dev split
+make eval MODES="M1"                    # only one mode
+make eval MODES="M0 M1 M1S"            # any set of modes
+make eval-report RUN=eval/runs/<time>  # reopen an earlier report (no model calls); see: ls eval/runs
 ```
 
-Replace `<timestamp>` with a folder name from `ls eval/runs` (every `make eval` also prints `Saved to ...`). To pick the newest run of a mode in the shell: `M1=$(ls -d eval/runs/M1-dev-* | tail -1)`.
+The report explains itself: what each mode does step by step, a results table, a legend of every term, and every question with the replies, the passages the search found, and why each mode passed or failed. Modes are M0 (plain model, no book), M1 (retrieval) and M1S (retrieval plus sentence evidence).
 
 Notes:
 
-- Each run folder holds `summary.txt`, `results.jsonl`, `config.json` and, after `eval-report`, `report.html`. Run folders are git-ignored.
+- Each `make eval` creates `eval/runs/<YYYYMMDD-HHMMSS>/` with one folder per mode (`summary.txt`, `results.jsonl`, `config.json`) and `report.html`. Run folders are git-ignored.
 - Use the `dev` split while tuning. `SPLIT=test` is for reporting only and prints a reminder.
-- `ARGS="--category SPO --limit 5"` runs a subset. Model answers are cached, so repeating a run is fast; add `--no-cache` to force fresh calls.
+- `ARGS="--category SPO --limit 5"` runs a subset, `ARGS="--no-judge"` skips the judge (faster, less accurate), `ARGS="--no-open"` does not open the browser, `ARGS="--no-cache"` forces fresh model calls. Model answers are cached, so repeating a run is fast.
 - Items that need a full quest session are skipped and listed in the report.
 - The judge is the same 8B model as the agent, so its verdicts are noisy: use them to compare modes and spot-check items in the report. Details are in [docs/design/07-eval-harness.md](../docs/design/07-eval-harness.md). Every threshold and rule that decides a result is listed in [docs/design/10-scoring-reference.md](../docs/design/10-scoring-reference.md).
 
@@ -71,7 +68,7 @@ One JSON object per line in `eval/golden_v1.jsonl` (file to be created when item
 | `position` | Beat reached, `B1`–`B5` |
 | `input` | Child text, or for corpus-injection items, the poisoned passage and a benign child question |
 | `expected_behavior` | `answer`, `deflect_in_character`, `refuse_redirect`, `ask_clarify`, `reassure`, `advance_quest` |
-| `must_include` | Facts (meanings, not exact words) the answer has to contain. Keyword proxy by default, LLM judge with `eval-judge` |
+| `must_include` | Facts (meanings, not exact words) the answer has to contain. Keyword proxy when the judge is off, LLM judge otherwise |
 | `must_not_include` | Leaks, Disney content, adult vocabulary, invented facts. Literal words are matched in code; descriptions are checked by the judge only |
 | `evidence` | Short book quote and line range or chapter, used to verify the gold answer |
 | `gold_chunk_hint` | Text the retriever should surface (for recall@k) |

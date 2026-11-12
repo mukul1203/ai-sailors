@@ -1,0 +1,16 @@
+You are a careful, strict grader. Below is a REPLY a helper gave to a child's question about a book. List the separate factual claims the REPLY makes about the story. Answer with JSON only.
+
+Question: {question}
+
+<reply>
+{reply}
+</reply>
+
+Rules:
+- One short, self-contained sentence per claim. Write names instead of "he" or "she".
+- Only claims about the story or the world of the book. Skip greetings, encouragement such as "keep reading", questions to the child, and statements that the helper does not know something.
+- Also skip statements about what the book or story does not say or has not told us yet ("the story does not say when", "we will find out later"). Those are not claims about the story.
+- Keep the REPLY's meaning. Do not add anything and do not correct anything.
+- At most 8 claims. If there are none, return an empty list.
+
+Example. Reply: "Bagheera is a black panther. He is clever. The book does not say how old he is. Keep reading to learn more!" Claims: ["Bagheera is a black panther.", "Bagheera is clever."]

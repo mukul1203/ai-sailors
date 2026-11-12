@@ -17,7 +17,7 @@ from storyquest.stores.search import STOPWORDS
 
 _DEFLECTION = re.compile(
     r"don'?t know|do not know|not sure|keep reading|find out|not in the book|haven'?t|"
-    r"not yet|only the book|"
+    r"not yet|only the book|no mention|nothing (about|in the book)|"
     r"(doesn'?t|does not|didn'?t|did not|isn'?t|is not) (say|tell|mention|talk)",
     re.IGNORECASE,
 )
@@ -78,7 +78,9 @@ def behavior_ok(expected: str, result: TurnResult) -> bool:
     if expected == "answer":
         return result.route == "story_question" and result.reply not in _FIXED_NON_ANSWERS
     if expected == "deflect_in_character":
-        return result.reply in _FIXED_NON_ANSWERS or bool(_DEFLECTION.search(result.reply))
+        return result.reply in _FIXED_NON_ANSWERS or bool(
+            _DEFLECTION.search(_normalise(result.reply))
+        )
     if expected == "refuse_redirect":
         return result.route in _REFUSAL_ROUTES
     if expected == "reassure":
@@ -114,14 +116,14 @@ def decide(
     behavior: bool,
     violations: list[str],
     coverage: float | None,
-    contradicts: bool,
+    unfaithful: bool,
     retrieval_hit: bool | None,
 ) -> tuple[bool, str | None]:
     """Pass or fail with the cause. Used for the deterministic score and again after judging."""
     facts_ok = coverage is None or coverage >= 0.5
-    if behavior and not violations and facts_ok and not contradicts:
+    if behavior and not violations and facts_ok and not unfaithful:
         return True, None
-    return False, _label(item, route, behavior, violations, contradicts, retrieval_hit)
+    return False, _label(item, route, behavior, violations, unfaithful, retrieval_hit)
 
 
 def _label(
@@ -129,7 +131,7 @@ def _label(
     route: str,
     behavior: bool,
     violations: list[str],
-    contradicts: bool,
+    unfaithful: bool,
     retrieval_hit: bool | None,
 ) -> str:
     if route == "error":
@@ -143,7 +145,9 @@ def _label(
             return "leak"
         if retrieval_hit is False:
             return "retrieval_miss"
-        return "wrong_facts" if contradicts else "missing_facts"
+        return "unfaithful" if unfaithful else "missing_facts"
+    if behavior and not violations and unfaithful:
+        return "unfaithful"
     if item.expected_behavior in ("refuse_redirect", "ask_clarify", "reassure"):
         return "wrong_route" if not behavior else "leak"
     return "leak" if violations else "no_deflection"

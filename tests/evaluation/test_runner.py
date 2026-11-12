@@ -8,8 +8,8 @@ from llm_helpers import ScriptedLLM
 from storyquest.agent.context import AgentContext
 from storyquest.agent.modes import get_mode
 from storyquest.evaluation.items import load_items
-from storyquest.evaluation.report import compare, summarize
-from storyquest.evaluation.runner import load_run, make_config, pass_rates, run_eval, write_run
+from storyquest.evaluation.report import summarize
+from storyquest.evaluation.runner import load_batch, make_config, pass_rates, run_eval, write_run
 from storyquest.models.llm import LLMClient
 
 pytestmark = pytest.mark.integration
@@ -45,21 +45,20 @@ def test_a_run_is_saved_and_can_be_reloaded_and_summarised(
     config = make_config(ctx, get_mode("M1"), "dev", eval_dir / "golden_v1.jsonl", rows)
     summary = summarize(config, rows)
     run_dir = write_run(tmp_path / "runs", config, rows, summary)
-    assert run_dir.name.startswith("M1-dev-")
+    assert run_dir.name == "M1"
     assert (run_dir / "summary.txt").read_text().startswith("Run M1 | split dev | 4 run, 1 skipped")
-    loaded_config, loaded_rows = load_run(run_dir)
+    [(loaded_config, loaded_rows)] = load_batch(tmp_path / "runs")
     assert loaded_config["mode"] == "M1" and loaded_rows == json.loads(json.dumps(rows))
+    assert load_batch(run_dir)[0][0]["mode"] == "M1"
     assert "Pass rate:" in summary and "Skipped: FLO-001" in summary
     assert sum(n for _, n in pass_rates(rows).values()) == 4
 
 
-def test_compare_lists_what_changed_between_two_runs(
+def test_rows_keep_what_the_report_needs_to_explain_a_result(
     make_ctx: Callable[[LLMClient], AgentContext], eval_dir: Path
 ) -> None:
-    _, rows_a = run(make_ctx, eval_dir, "M1", ScriptedLLM(label="off_topic"))
-    ctx, rows_b = run(make_ctx, eval_dir, "M1", ScriptedLLM(answer="He is lame in one foot."))
-    config = make_config(ctx, get_mode("M1"), "dev", eval_dir / "golden_v1.jsonl", rows_b)
-    text = compare((config, rows_a), (config, rows_b))
-    assert "overall" in text
-    assert "Pass in M1 but not in M1:" in text
-    assert "CAN-003" in text  # fixed by answering instead of redirecting
+    _, rows = run(make_ctx, eval_dir, "M1", ScriptedLLM(answer="He is lame in one foot."))
+    can3 = next(r for r in rows if r["id"] == "CAN-003")
+    assert can3["must_include"] and can3["gold_text"]
+    assert can3["passages"] and all(p["text"] for p in can3["passages"])
+    assert any(p["has_gold"] for p in can3["passages"])

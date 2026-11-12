@@ -2,28 +2,30 @@
 
 import argparse
 import dataclasses
+import re
 import sqlite3
 import sys
+import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
 
 from storyquest import __version__
 from storyquest.agent.context import AgentError, load_context
-from storyquest.agent.modes import get_mode
+from storyquest.agent.modes import Mode, get_mode
 from storyquest.agent.render import render_turn
 from storyquest.agent.turn import run_turn
 from storyquest.catalog.importer import CatalogError, import_books
 from storyquest.config import Settings, load_settings
 from storyquest.domain.position import Position
-from storyquest.evaluation.html_report import render_html
+from storyquest.evaluation.html_report import render_report
 from storyquest.evaluation.items import GoldItem, load_items
-from storyquest.evaluation.report import compare, summarize
+from storyquest.evaluation.report import summarize
 from storyquest.evaluation.runner import (
     judge_rows,
-    load_run,
+    load_batch,
     make_config,
+    new_batch_dir,
     run_eval,
-    save_run,
     write_run,
 )
 from storyquest.ingestion.errors import IngestionError
@@ -140,6 +142,18 @@ def _select_items(args: argparse.Namespace, items: list[GoldItem]) -> list[GoldI
     return items[: args.limit] if args.limit else items
 
 
+def _parse_modes(text: str) -> list[Mode]:
+    names = dict.fromkeys(n.upper() for n in re.split(r"[,\s]+", text) if n)
+    return [get_mode(n) for n in names]
+
+
+def _publish(page: Path, html: str, *, open_it: bool) -> None:
+    page.write_text(html)
+    print(f"\nReport: {page}")
+    if open_it:
+        webbrowser.open(page.resolve().as_uri())
+
+
 def _eval_run(args: argparse.Namespace) -> int:
     settings, conn = _open_content()
     golden = Path(args.golden) if args.golden else settings.root / "eval" / "golden_v1.jsonl"
@@ -150,56 +164,37 @@ def _eval_run(args: argparse.Namespace) -> int:
     if args.split in ("test", "all"):
         print("note: the test split is for reporting; do not tune against it")
     try:
+        modes = _parse_modes(args.modes)
         llm = build_llm(settings, use_cache=not args.no_cache)
         ctx = load_context(conn, llm, settings, args.book)
-        mode = get_mode(args.mode)
     except (LLMError, AgentError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    rows = run_eval(ctx, items, mode, log=print)
-    config = make_config(ctx, mode, args.split, golden, rows)
-    if args.judge:
-        rows = judge_rows(ctx, {i.id: i for i in items}, rows, log=print)
-        config.update(judged=True, judge_model=settings.llm_model)
-    summary = summarize(config, rows)
-    run_dir = write_run(settings.root / "eval" / "runs", config, rows, summary)
-    print("\n" + summary + f"\n\nSaved to {run_dir.relative_to(settings.root)}")
-    return 0
-
-
-def _eval_judge(args: argparse.Namespace) -> int:
-    settings, conn = _open_content()
-    run_dir = Path(args.run)
-    config, rows = load_run(run_dir)
-    golden = Path(config.get("golden_path") or settings.root / "eval" / "golden_v1.jsonl")
-    items = {i.id: i for i in load_items(golden)}
-    try:
-        llm = build_llm(settings, use_cache=not args.no_cache)
-        ctx = load_context(conn, llm, settings, config["book"])
-    except (LLMError, AgentError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    rows = judge_rows(ctx, items, rows, log=print)
-    config.update(judged=True, judge_model=settings.llm_model)
-    summary = summarize(config, rows)
-    save_run(run_dir, config, rows, summary)
-    print("\n" + summary)
+    batch = new_batch_dir(settings.root / "eval" / "runs")
+    runs = []
+    for mode in modes:
+        print(f"\n=== Mode {mode.name}: {mode.title} ===")
+        rows = run_eval(ctx, items, mode, log=print)
+        config = make_config(ctx, mode, args.split, golden, rows)
+        if not args.no_judge:
+            rows = judge_rows(ctx, {i.id: i for i in items}, rows, log=print)
+            config.update(judged=True, judge_model=settings.llm_model)
+        summary = summarize(config, rows)
+        write_run(batch, config, rows, summary)
+        print("\n" + summary)
+        runs.append((config, rows))
+    _publish(batch / "report.html", render_report(runs), open_it=not args.no_open)
     return 0
 
 
 def _eval_report(args: argparse.Namespace) -> int:
-    run_dir = Path(args.run)
-    config, rows = load_run(run_dir)
-    baseline = load_run(Path(args.against)) if args.against else None
-    page = run_dir / "report.html"
-    page.write_text(render_html(config, rows, baseline))
-    print(f"Wrote {page}")
-    print(f"Open it in a browser, e.g. on macOS: open {page}")
-    return 0
-
-
-def _eval_compare(args: argparse.Namespace) -> int:
-    print(compare(load_run(Path(args.run_a)), load_run(Path(args.run_b))))
+    folder = Path(args.folder)
+    try:
+        runs = load_batch(folder)
+    except FileNotFoundError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    _publish(folder / "report.html", render_report(runs), open_it=not args.no_open)
     return 0
 
 
@@ -250,15 +245,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     ask_agent.add_argument("question")
     ask_agent.add_argument("--chapter", type=int, default=0, help="child's chapter (zero-based)")
     ask_agent.add_argument("--beat", type=int, default=0, help="child's beat (zero-based)")
-    ask_agent.add_argument("--mode", default="M1", help="M0 plain model, M1 with retrieval")
+    ask_agent.add_argument(
+        "--mode",
+        default="M1",
+        help="M0 plain model, M1 with retrieval, M1S retrieval plus sentence evidence",
+    )
     ask_agent.add_argument("--verbose", action="store_true", help="show the exact prompts")
     ask_agent.add_argument("--no-cache", action="store_true")
 
     ev = sub.add_parser("eval", help="Evaluate the agent on the golden set").add_subparsers(
         dest="eval_command", required=True
     )
-    run = ev.add_parser("run", help="Run the golden set through the agent")
-    run.add_argument("--mode", default="M1")
+    run = ev.add_parser("run", help="Run the golden set, judge it, write one report and open it")
+    run.add_argument("--modes", default="M1", help="modes to compare, e.g. 'M0 M1 M1S'")
     run.add_argument("--split", default="dev", choices=["dev", "test", "all"])
     run.add_argument("--category", help="only this category, e.g. SPO")
     run.add_argument("--ids", help="comma-separated item ids")
@@ -266,16 +265,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--book", type=int, default=236)
     run.add_argument("--golden", help="path to a golden-set file")
     run.add_argument("--no-cache", action="store_true")
-    run.add_argument("--judge", action="store_true", help="also run the LLM judge")
-    jdg = ev.add_parser("judge", help="Add LLM judge verdicts to a saved run")
-    jdg.add_argument("run")
-    jdg.add_argument("--no-cache", action="store_true")
-    rep = ev.add_parser("report", help="Write report.html for a saved run")
-    rep.add_argument("run")
-    rep.add_argument("--against", help="another run to compare with")
-    cmp = ev.add_parser("compare", help="Compare two saved runs")
-    cmp.add_argument("run_a")
-    cmp.add_argument("run_b")
+    run.add_argument("--no-judge", action="store_true", help="skip the LLM judge (faster)")
+    run.add_argument("--no-open", action="store_true", help="do not open the report")
+    rep = ev.add_parser("report", help="Rebuild and open the report for a saved run folder")
+    rep.add_argument("folder")
+    rep.add_argument("--no-open", action="store_true")
 
     args = parser.parse_args(argv)
     try:
@@ -303,10 +297,5 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "ask":
         return _ask(args)
     if args.command == "eval":
-        return {
-            "run": _eval_run,
-            "judge": _eval_judge,
-            "report": _eval_report,
-            "compare": _eval_compare,
-        }[args.eval_command](args)
+        return {"run": _eval_run, "report": _eval_report}[args.eval_command](args)
     return 2
