@@ -2,7 +2,7 @@
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from storyquest.domain.position import Position
@@ -23,6 +23,8 @@ class GoldItem:
     must_not_include: list[str]
     gold_lines: list[tuple[int, int]]  # raw-file line ranges holding the answer
     skip: str | None
+    fact_evidence: list[dict[str, str]] = field(default_factory=list)  # one per must_include fact
+    fact_lines: list[list[tuple[int, int]]] = field(default_factory=list)  # parsed fact lines
 
 
 def parse_hint(hint: str) -> list[tuple[int, int]]:
@@ -42,6 +44,9 @@ def load_items(path: Path) -> list[GoldItem]:
             continue
         row = json.loads(line)
         text = row["input"]
+        evidence = row.get("fact_evidence", [])
+        fact_lines = [parse_hint(e["lines"]) for e in evidence]
+        gold = [r for ranges in fact_lines for r in ranges] or parse_hint(row["gold_chunk_hint"])
         items.append(
             GoldItem(
                 id=row["id"],
@@ -52,8 +57,10 @@ def load_items(path: Path) -> list[GoldItem]:
                 expected_behavior=row["expected_behavior"],
                 must_include=row["must_include"],
                 must_not_include=row["must_not_include"],
-                gold_lines=parse_hint(row["gold_chunk_hint"]),
+                gold_lines=gold,
                 skip=row.get("skip"),
+                fact_evidence=evidence,
+                fact_lines=fact_lines,
             )
         )
     return items

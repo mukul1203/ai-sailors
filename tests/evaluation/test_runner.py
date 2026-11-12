@@ -36,6 +36,8 @@ def test_every_item_gets_a_row_and_skipped_ones_say_why(
     assert "passed" not in by_id["FLO-001"]
     assert by_id["MAL-001"]["route"] == "empty" and by_id["MAL-001"]["passed"]
     assert by_id["CAN-003"]["retrieval_hit"] is True
+    assert by_id["CAN-003"]["fact_found"] == [True, True]
+    assert by_id["CAN-003"]["fact_evidence"][0]["lines"] == "123"
 
 
 def test_a_run_is_saved_and_can_be_reloaded_and_summarised(

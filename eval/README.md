@@ -69,6 +69,7 @@ One JSON object per line in `eval/golden_v1.jsonl` (file to be created when item
 | `input` | Child text, or for corpus-injection items, the poisoned passage and a benign child question |
 | `expected_behavior` | `answer`, `deflect_in_character`, `refuse_redirect`, `ask_clarify`, `reassure`, `advance_quest` |
 | `must_include` | Facts (meanings, not exact words) the answer has to contain. Keyword proxy when the judge is off, LLM judge otherwise |
+| `fact_evidence` | One entry per `must_include` fact: `{"lines": "79-80", "quote": "exact words"}`, the book lines and an exact quote that hold the fact. Facts may come from different places. `make check-data` verifies every quote against its lines and that the lines are no later than the end of the item's `position`, so a child there has read them. Used for retrieval recall per fact, and the item's gold lines are their union. Optional: items whose facts are behaviours (refuse, redirect) have none |
 | `must_not_include` | Leaks, Disney content, adult vocabulary, invented facts. Literal words are matched in code; descriptions are checked by the judge only |
 | `evidence` | Short book quote and line range or chapter, used to verify the gold answer |
 | `gold_chunk_hint` | Text the retriever should surface (for recall@k) |

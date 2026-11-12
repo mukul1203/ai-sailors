@@ -3,7 +3,13 @@
 from collections import Counter
 from statistics import mean
 
-from storyquest.evaluation.runner import Row, faithfulness_counts, mean_precision, pass_rates
+from storyquest.evaluation.runner import (
+    Row,
+    fact_evidence_counts,
+    faithfulness_counts,
+    mean_precision,
+    pass_rates,
+)
 
 
 def _pct(a: int, b: int) -> str:
@@ -32,6 +38,12 @@ def summarize(config: Row, rows: list[Row]) -> str:
         f"Retrieval: gold passage in the top {config['retrieval_top_k']} "
         f"for {_pct(hits, len(with_gold))}",
     ]
+    found, total = fact_evidence_counts(ran)
+    if total:
+        out.append(
+            f"Evidence recall: {found} of {total} expected facts had their evidence among the "
+            f"top {config['retrieval_top_k']} passages"
+        )
     routes = Counter(r["route"] for r in ran)
     out.append("Routes: " + ", ".join(f"{k} {v}" for k, v in routes.most_common()))
     coverage = [r["fact_coverage"] for r in ran if r["fact_coverage"] is not None]

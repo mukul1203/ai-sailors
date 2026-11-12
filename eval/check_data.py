@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate the golden eval set and the reference spine."""
+
 import json
 import re
 import sys
@@ -20,8 +21,17 @@ BEHAVIORS = {
     "answer", "deflect_in_character", "refuse_redirect", "ask_clarify", "advance_quest", "reassure"
 }  # fmt: skip
 REQUIRED = {
-    "id", "category", "split", "position", "input", "expected_behavior",
-    "must_include", "must_not_include", "evidence", "gold_chunk_hint", "notes",
+    "id",
+    "category",
+    "split",
+    "position",
+    "input",
+    "expected_behavior",
+    "must_include",
+    "must_not_include",
+    "evidence",
+    "gold_chunk_hint",
+    "notes",
 }
 
 errors = []
@@ -32,7 +42,9 @@ def err(msg):
 
 
 def norm(text):
-    text = text.translate(str.maketrans({"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"'}))
+    text = text.translate(
+        str.maketrans({"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"'})
+    )
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
@@ -55,18 +67,55 @@ def check_book():
     manifest = MANIFEST.read_text()
     m = re.search(r"^sha256:\s*([0-9a-f]{64})", manifest, re.M)
     import hashlib
+
     actual = hashlib.sha256(BOOK.read_bytes()).hexdigest()
     if not m or m.group(1) != actual:
-        err(f"{BOOK.relative_to(ROOT)}: hash does not match book.yaml (line numbers in the eval set may be stale)")
+        err(
+            f"{BOOK.relative_to(ROOT)}: hash does not match book.yaml (line numbers in the eval set may be stale)"
+        )
     else:
         print("fixture hash: ok")
     return BOOK.read_text().splitlines()
+
+
+def beat_ends():
+    """Last source line of each beat: a child at B3 has read everything up to B3's end."""
+    spine = json.loads(SPINE.read_text())
+    return {b["id"]: int(b["source_lines"].split("-")[1]) for b in spine["beats"]}
+
+
+def check_fact_evidence(rid, row, book_lines, ends):
+    """Each expected fact needs lines, an exact quote inside them, and lines the child has read."""
+    evidence = row["fact_evidence"]
+    if not isinstance(evidence, list) or len(evidence) != len(row["must_include"]):
+        err(f"{rid}: fact_evidence must have one entry per must_include fact")
+        return 0
+    verified = 0
+    for i, entry in enumerate(evidence, 1):
+        ranges = line_ranges(entry.get("lines", "")) if isinstance(entry, dict) else None
+        if not ranges or not entry.get("quote"):
+            err(f"{rid}: fact {i} needs numeric lines and a quote")
+            continue
+        chunk = " ".join(" ".join(book_lines[s - 1 : e]) for s, e in ranges)
+        if norm(entry["quote"]) not in norm(chunk):
+            err(f"{rid}: fact {i} quote not found in lines {entry['lines']}: {entry['quote']!r}")
+            continue
+        last = max(e for _, e in ranges)
+        if last > ends[row["position"]]:
+            err(
+                f"{rid}: fact {i} evidence ends at line {last}, after the end of {row['position']} (line {ends[row['position']]})"
+            )
+            continue
+        verified += 1
+    return verified
 
 
 def check_golden(book_lines):
     seen = set()
     count = 0
     quoted = 0
+    fact_quotes = 0
+    ends = beat_ends()
     for n, line in enumerate(GOLDEN.read_text().splitlines(), 1):
         if not line.strip():
             continue
@@ -96,17 +145,26 @@ def check_golden(book_lines):
             err(f"{rid}: unknown expected_behavior {row['expected_behavior']}")
         if row["category"] == "SPO" and not row["must_not_include"]:
             err(f"{rid}: spoiler item needs must_not_include")
-        if not isinstance(row["evidence"], dict) or not {"lines", "quote"} <= row["evidence"].keys():
+        if (
+            not isinstance(row["evidence"], dict)
+            or not {"lines", "quote"} <= row["evidence"].keys()
+        ):
             err(f"{rid}: evidence needs lines and quote")
         else:
             ranges = line_ranges(row["evidence"]["lines"])
             quote = row["evidence"]["quote"]
             if ranges and not quote.startswith("("):
                 quoted += 1
-                chunk = " ".join(" ".join(book_lines[s - 1:e]) for s, e in ranges)
+                chunk = " ".join(" ".join(book_lines[s - 1 : e]) for s, e in ranges)
                 if norm(quote) not in norm(chunk):
-                    err(f"{rid}: evidence quote not found in lines {row['evidence']['lines']}: {quote!r}")
-    print(f"golden set: {count} items, {quoted} evidence quotes verified against the book")
+                    err(
+                        f"{rid}: evidence quote not found in lines {row['evidence']['lines']}: {quote!r}"
+                    )
+        if "fact_evidence" in row:
+            fact_quotes += check_fact_evidence(rid, row, book_lines, ends)
+    print(
+        f"golden set: {count} items, {quoted} evidence quotes and {fact_quotes} per-fact quotes verified against the book"
+    )
 
 
 def check_spine():

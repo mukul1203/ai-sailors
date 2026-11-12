@@ -24,19 +24,34 @@ from storyquest.stores.search import SearchHit, search_chunks
 Row = dict[str, Any]
 
 
-def _hit_has_gold(cleaned: Cleaned, item: GoldItem, hit: SearchHit) -> bool:
+def _overlaps(cleaned: Cleaned, ranges: list[tuple[int, int]], hit: SearchHit) -> bool:
     first, last = cleaned.line_at(hit.start_char), cleaned.line_at(hit.end_char - 1)
-    return any(first <= b and a <= last for a, b in item.gold_lines)
+    return any(first <= b and a <= last for a, b in ranges)
+
+
+def _hit_has_gold(cleaned: Cleaned, item: GoldItem, hit: SearchHit) -> bool:
+    return _overlaps(cleaned, item.gold_lines, hit)
+
+
+def _plain_hits(ctx: AgentContext, item: GoldItem) -> list[SearchHit]:
+    return search_chunks(
+        ctx.conn, ctx.book.id, item.input, item.position, limit=ctx.settings.retrieval_top_k
+    )
 
 
 def _retrieval_hit(ctx: AgentContext, cleaned: Cleaned, item: GoldItem) -> bool | None:
     """Did plain retrieval put the gold lines in the top passages? Independent of the model."""
     if not item.gold_lines or not item.input.strip():
         return None
-    hits = search_chunks(
-        ctx.conn, ctx.book.id, item.input, item.position, limit=ctx.settings.retrieval_top_k
-    )
-    return any(_hit_has_gold(cleaned, item, h) for h in hits)
+    return any(_hit_has_gold(cleaned, item, h) for h in _plain_hits(ctx, item))
+
+
+def _facts_found(ctx: AgentContext, cleaned: Cleaned, item: GoldItem) -> list[bool] | None:
+    """For each expected fact, did plain retrieval find a passage that holds its evidence?"""
+    if not item.fact_lines or not item.input.strip():
+        return None
+    hits = _plain_hits(ctx, item)
+    return [any(_overlaps(cleaned, ranges, h) for h in hits) for ranges in item.fact_lines]
 
 
 def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) -> Row:
@@ -49,6 +64,7 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
         "input": item.input[:200],
         "expected": item.expected_behavior,
         "must_include": item.must_include,
+        "fact_evidence": item.fact_evidence,
         "must_not_include": item.must_not_include,
         "skipped": item.skip,
     }
@@ -65,6 +81,7 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
         unchecked=score.unchecked,
         fact_coverage=score.fact_coverage,
         retrieval_hit=score.retrieval_hit,
+        fact_found=_facts_found(ctx, cleaned, item),
         passed=score.passed,
         label=score.label,
         calls=len(result.steps),
@@ -253,6 +270,12 @@ def load_batch(path: Path) -> list[tuple[Row, list[Row]]]:
     if not runs:
         raise FileNotFoundError(f"No evaluation results found in {path}")
     return sorted(runs, key=lambda r: list(MODES).index(r[0]["mode"]))
+
+
+def fact_evidence_counts(rows: list[Row]) -> tuple[int, int]:
+    """(expected facts whose evidence plain retrieval found, facts that have evidence lines)."""
+    flags = [f for r in rows if not r["skipped"] for f in (r.get("fact_found") or [])]
+    return sum(flags), len(flags)
 
 
 def faithfulness_counts(rows: list[Row]) -> tuple[int, int]:

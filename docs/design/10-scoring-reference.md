@@ -60,7 +60,9 @@ Coverage is the share of facts covered. A fact with no usable words counts as co
 
 ### Retrieval hit
 
-Whether any of the top-k passages overlaps the item's `gold_lines`. It is computed in both modes, because it tests the search and not the model. `None` means the item has no gold lines.
+Whether any of the top-k passages overlaps the item's gold lines (the union of its facts' evidence lines, or `gold_chunk_hint` when it has none). It is computed in both modes, because it tests the search and not the model. `None` means the item has no gold lines.
+
+**Evidence recall** is the same test per expected fact: for each fact with `fact_evidence`, did any top-k passage overlap that fact's lines? The report shows it per reply ("2 of 3, not found: ...") and as one summary row per mode. It is the retrieval metric for answers that need several passages. It does not decide pass or fail.
 
 ## 3. The judge (`evaluation/judge.py`, on by default in `make eval`)
 

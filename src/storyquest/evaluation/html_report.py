@@ -19,6 +19,7 @@ from storyquest.evaluation.glossary import (
 )
 from storyquest.evaluation.runner import (
     CATEGORY_ORDER,
+    fact_evidence_counts,
     faithfulness_counts,
     mean_precision,
     pass_rates,
@@ -117,6 +118,20 @@ def _summary_section(runs: list[Run]) -> str:
         else:
             cells.append(_rate(sum(bool(r["retrieval_hit"]) for r in gold), len(gold)))
     line("Search found the answer passage", cells, "Of questions with a marked answer passage")
+
+    cells = []
+    for config, rs in runs:
+        mode = MODES.get(config["mode"])
+        if mode is not None and not mode.retrieval:
+            cells.append("<span class='dim'>no search</span>")
+            continue
+        found, total = fact_evidence_counts(rs)
+        cells.append(_rate(found, total))
+    line(
+        "Search found each fact's evidence",
+        cells,
+        "Of the expected facts that have marked evidence lines (a fact can sit in a different passage)",
+    )
 
     cells = []
     for _, rs in runs:
@@ -347,6 +362,14 @@ def _steps_html(r: Row, retrieves: bool, grounded: bool) -> str:
                 if n
                 else "Search: nothing matched, so no answer was written."
             )
+            found_facts = r.get("fact_found")
+            if n and found_facts:
+                missing = [r["must_include"][i] for i, ok in enumerate(found_facts) if not ok]
+                steps.append(
+                    f"Expected facts whose evidence is among the passages: "
+                    f"<b>{sum(found_facts)} of {len(found_facts)}</b>"
+                    + (f". Not found: {escape('; '.join(missing))}" if missing else "")
+                )
         else:
             steps.append("Answer: written from the model's own memory of the book.")
         if grounded and r.get("passages"):
@@ -383,6 +406,18 @@ def _panel(config: Row, r: Row | None) -> str:
     )
 
 
+def _fact_source(r: Row, i: int) -> str:
+    """Where in the book an expected fact comes from, when the golden set says so."""
+    evidence = r.get("fact_evidence") or []
+    if i >= len(evidence):
+        return ""
+    e = evidence[i]
+    return (
+        f" <span class='sub'>(book lines {escape(e['lines'])}: "
+        f"<i>&ldquo;{escape(e['quote'])}&rdquo;</i>)</span>"
+    )
+
+
 def _item(item_id: str, per_mode: list[tuple[Row, Row | None]]) -> str:
     rows = [r for _, r in per_mode if r is not None]
     r0 = rows[0]
@@ -394,7 +429,10 @@ def _item(item_id: str, per_mode: list[tuple[Row, Row | None]]) -> str:
         if r is not None and not r["skipped"]
     )
     gold = next((r.get("gold_text") for r in rows if r.get("gold_text")), "")
-    facts = "".join(f"<li>{escape(f)}</li>" for f in r0.get("must_include", []))
+    facts = "".join(
+        f"<li>{escape(f)}{_fact_source(r0, i)}</li>"
+        for i, f in enumerate(r0.get("must_include", []))
+    )
     banned = ", ".join(r0.get("must_not_include", []))
     meta = (
         f"<p><b>Child asks:</b> &ldquo;{escape(r0['input'])}&rdquo;<br>"

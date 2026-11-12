@@ -159,4 +159,5 @@ def test_the_report_escapes_replies_and_explains_each_mode_and_item(make_ctx, ev
     assert "Legend" in page and "BM25 score" in page and "Passages retrieved" in page
     assert "How the agent got here" in page and "CAN-003" in page and "modes differ" in page
     assert "This mode does not search the book" in page  # the M0 panel
+    assert "Search found each fact's evidence" in page and "book lines 123" in page
     assert "Skipped (1)" in page

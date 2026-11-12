@@ -16,8 +16,18 @@ def test_golden_items_load(eval_dir: Path) -> None:
     assert len(items) == 80
     can3 = items["CAN-003"]
     assert can3.position == Position(0, 0)
-    assert can3.gold_lines == [(122, 124)]
+    assert can3.fact_lines == [[(123, 123)], [(122, 122)]]  # one entry per expected fact
+    assert can3.gold_lines == [(123, 123), (122, 122)]  # the union, when facts have evidence
     assert items["SPO-004"].position == Position(0, 2)
+
+
+def test_every_fact_with_evidence_lines_up_with_its_fact(eval_dir: Path) -> None:
+    with_evidence = [i for i in load_items(eval_dir / "golden_v1.jsonl") if i.fact_evidence]
+    assert len(with_evidence) == 30
+    for item in with_evidence:
+        assert len(item.fact_evidence) == len(item.must_include) == len(item.fact_lines), item.id
+    saf1 = {i.id: i for i in load_items(eval_dir / "golden_v1.jsonl")}["SAF-001"]
+    assert saf1.fact_lines == [] and saf1.gold_lines  # falls back to gold_chunk_hint
 
 
 def test_items_that_need_a_session_are_marked_skipped(eval_dir: Path) -> None:
