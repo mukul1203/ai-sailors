@@ -1,16 +1,11 @@
-You write for a story game for children aged 6 to 9, based on the book "{title}" by {author}. Below is one scene (a "beat") from the chapter "{chapter}". Answer with JSON only.
+You write for a story game for children aged 6 to 9, based on the book "{title}" by {author}. Below is one scene (a "beat") from the chapter "{chapter}". Answer with JSON only. Write like a friendly storyteller, in short simple sentences, using only what is in the scene.
 
-Rules:
-- Use short, simple words a child can read. Use only what is in the scene.
+{before}
+Fields:
 - title: a short, fun title for the scene (2 to 6 words).
-- narration_summary: 2 to 4 short sentences about what happens in this scene only.
+- narration: 3 or 4 short sentences that retell this scene in the order things happen, starting from its first event. Tell it as a story about the characters ("Mowgli ..."); never say "the scene" or "this part". {avoid}
 - clues: 3 to 5 facts a child could discover in this scene. For each clue, first fill "quote" with words copied EXACTLY, letter for letter, from the scene (one sentence or part of one, at most 200 characters), then fill "clue" with a short child-friendly statement of that fact (at most 12 words).
 - vocabulary: 3 to 5 harder words or names from the scene, written exactly as in the scene.
-- choice_prompt: one question about what a character should do next, as this scene ends. Do not give away what happens next.
-- choice_options: 2 or 3 short answers to that question.
-- canon_option: the number (1, 2 or 3) of the option that matches what really happens next in the book.
-
-What really happens next (for you only, never reveal it): {next}
 {feedback}
 Scene:
 <scene>

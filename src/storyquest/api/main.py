@@ -1,7 +1,9 @@
 """The HTTP API and the web UI: `create_app()` is the app factory (run with `uvicorn --factory`)."""
 
 import sqlite3
-from collections.abc import Callable, Iterator
+import threading
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from importlib.resources import files
 from typing import Any
@@ -12,8 +14,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from storyquest.agent.modes import Mode, get_mode
-from storyquest.api import play
+from storyquest.api import library, play
 from storyquest.config import Settings, load_settings
+from storyquest.ingestion.worker import run_worker
 from storyquest.models.build import build_embedder, build_llm
 from storyquest.models.embedder import Embedder, EmbeddingError
 from storyquest.models.llm import LLMClient, LLMError
@@ -52,6 +55,14 @@ def _choose_mode(settings: Settings, embedder: Embedder | None) -> Mode:
     return mode
 
 
+def _work(settings: Settings, llm: LLMClient, stop: threading.Event) -> None:
+    conn = connect(settings.data_dir / "content.db")
+    try:
+        run_worker(conn, settings, llm, poll_seconds=1.0, stop=stop)
+    finally:
+        conn.close()
+
+
 def create_app(
     settings: Settings | None = None,
     llm: LLMClient | None = None,
@@ -79,8 +90,21 @@ def create_app(
         migrate(conn, migrations_dir(name))
         conn.close()
 
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        """Run queued ingestion jobs (a chapter being prepared) in a thread for as long as the
+        app lives. The model serves one request at a time, so this shares it with the children."""
+        stop = threading.Event()
+        if settings.ingest_in_api and state.llm is not None:
+            threading.Thread(
+                target=_work, args=(settings, state.llm, stop), name="ingestion", daemon=True
+            ).start()
+        yield
+        stop.set()
+
     app = FastAPI(
         title="StoryQuest",
+        lifespan=lifespan,
         docs_url="/api/docs" if settings.api_debug else None,
         redoc_url=None,
         openapi_url="/api/openapi.json" if settings.api_debug else None,
@@ -121,6 +145,18 @@ def create_app(
     @app.get("/api/health")
     def health() -> dict[str, Any]:
         return {"status": "ok", "model": state.llm is not None, "mode": state.mode.name}
+
+    @app.get("/api/library")
+    def books(content: sqlite3.Connection = Content) -> list[dict[str, Any]]:
+        return library.library(content, settings)
+
+    @app.post("/api/library/{book_id}/chapters/{chapter_idx}/prepare", status_code=202)
+    def prepare(
+        book_id: int, chapter_idx: int, content: sqlite3.Connection = Content
+    ) -> dict[str, Any]:
+        if state.llm is None:
+            raise play.PlayError(503, "not_ready", "The story helper is resting. Try again later!")
+        return {"job": library.prepare_chapter(content, settings, book_id, chapter_idx)}
 
     @app.get("/api/missions")
     def missions(content: sqlite3.Connection = Content) -> list[dict[str, Any]]:

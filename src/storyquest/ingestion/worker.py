@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -44,12 +45,13 @@ def run_worker(
     once: bool = False,
     poll_seconds: float = 5.0,
     log: Log = lambda _: None,
+    stop: threading.Event | None = None,
 ) -> int:
     """Process queued ingestion jobs one at a time. Returns how many it handled. With `once`
     it stops when the queue is empty; otherwise it waits for new jobs."""
     repo = ContentRepo(conn)
     handled = 0
-    while True:
+    while not (stop is not None and stop.is_set()):
         job = repo.claim_job()
         if job is None:
             if once:
@@ -57,9 +59,14 @@ def run_worker(
             time.sleep(poll_seconds)
             continue
         log(f"job {job['id']}: book {job['book_id']}")
+
+        def progress(line: str, job_id: int = job["id"]) -> None:
+            repo.set_job_message(job_id, line.strip()[:200])  # the UI shows the latest line
+            log(line)
+
         try:
             options = options_from_json(json.loads(job["options"]))
-            report = run_ingestion(conn, settings, llm, job["book_id"], options, log)
+            report = run_ingestion(conn, settings, llm, job["book_id"], options, progress)
         except (IngestionError, LLMError, ValueError) as e:
             repo.finish_job(job["id"], "failed", str(e))
             log(f"job {job['id']} failed: {e}")
@@ -68,3 +75,4 @@ def run_worker(
             repo.finish_job(job["id"], "failed" if report.failed else "done", summary)
             log(f"job {job['id']} finished: {summary}, {len(report.failed)} failed")
         handled += 1
+    return handled

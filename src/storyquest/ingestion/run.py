@@ -15,7 +15,7 @@ from pathlib import Path
 
 from storyquest.config import Settings
 from storyquest.domain.book import Beat, Chapter, Entity
-from storyquest.ingestion.beatgen import generate_beat, next_hint, with_spoilers
+from storyquest.ingestion.beatgen import generate_beat, peek, with_spoilers
 from storyquest.ingestion.entities import clean_aliases, extract_from_beat, merge_into
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.pipeline import Prepared, build_chunks, prepare
@@ -207,15 +207,18 @@ class _Run:
         done: dict[int, Beat] = {}
         for beat in todo:
             nxt = beats[beat.idx + 1] if beat.idx + 1 < len(beats) else None
+            scene = scene_text(self.text, chapter, beat)
+            before = done.get(beat.idx - 1) or (beats[beat.idx - 1] if beat.idx else None)
             filled = generate_beat(
                 self._client(),
                 book_title=self.book.title,
                 author=self.book.author,
                 chapter_title=chapter.title,
                 base=beat,
-                scene=scene_text(self.text, chapter, beat),
-                next_hint=next_hint(scene_text(self.text, chapter, nxt) if nxt else None),
+                scene=scene,
+                next_text=peek(scene_text(self.text, chapter, nxt) if nxt else None, scene),
                 has_next=nxt is not None,
+                previous_narration=before.narration if before else "",
                 settings=self.settings,
             )
             done[beat.idx] = filled
@@ -234,9 +237,12 @@ class _Run:
         beats = [b for b in self.repo.get_beats(self.book.id, chapter.idx) if b.source == "llm"]
         repeated = duplicate_title_flags(beats)
         flagged = 0
+        chapter_beats = self.repo.get_beats(self.book.id, chapter.idx)
         for beat in beats:
             scene = scene_text(self.text, chapter, beat)
-            flags = [p.message for p in check_beat(beat, scene)]
+            nxt = chapter_beats[beat.idx + 1] if beat.idx + 1 < len(chapter_beats) else None
+            next_text = peek(scene_text(self.text, chapter, nxt) if nxt else None, scene)
+            flags = [p.message for p in check_beat(beat, scene, next_text)]
             flags += [repeated[beat.idx]] if beat.idx in repeated else []
             flagged += bool(flags)
             self.repo.update_beat(self.book.id, replace(beat, flags=flags))

@@ -15,12 +15,15 @@ def _between(prompt: str, tag: str) -> str:
 
 
 class StageLLM(FakeClient):
-    """Segment: proposes every Nth paragraph. Beat: builds a valid answer from the scene.
-    Entities: lists Mowgli plus one name that is not in the book. Set `mode` to break things."""
+    """Answers each ingestion call from its prompt. Segment: proposes every Nth paragraph.
+    Retell and question: valid answers built from the scene and the NEXT text. Entities: lists
+    Mowgli plus one name that is not in the book. Set `mode` to break things:
+    good, bad_quotes (clue quotes not in the scene), bad_answer (the right answer is not from
+    the next text), garbage (not JSON), down (endpoint error)."""
 
     def __init__(self, *, every: int = 12) -> None:
         self.every = every
-        self.mode = "good"  # good, bad_quotes, garbage, down
+        self.mode = "good"
         self.fail_after: int | None = None  # raise LLMError once this many calls were made
         super().__init__(self._respond)
 
@@ -34,6 +37,8 @@ class StageLLM(FakeClient):
             return "segment"
         if "You write for a story game" in prompt:
             return "beat"
+        if "guessing question" in prompt:
+            return "question"
         if "character guide" in prompt:
             return "entities"
         return "other"
@@ -55,16 +60,31 @@ class StageLLM(FakeClient):
         if kind == "beat":
             scene = " ".join(_between(prompt, "scene").split())
             words = [w for w in dict.fromkeys(re.findall(r"[A-Za-z]{5,}", scene))][:3]
-            quote = scene[:70] if self.mode == "good" else "words that are not in the scene at all"
+            quote = scene[:70] if self.mode != "bad_quotes" else "words that are not in the scene"
             return json.dumps(
                 {
                     "title": "Scene " + " ".join(scene.split()[:3]),
-                    "narration_summary": NARRATION,
+                    "narration": NARRATION,
                     "clues": [{"quote": quote, "clue": f"Clue {i}"} for i in range(3)],
                     "vocabulary": words,
-                    "choice_prompt": "What should they do next?",
-                    "choice_options": ["Go on", "Wait here"],
-                    "canon_option": 2,
+                }
+            )
+        if kind == "question":
+            upcoming = " ".join(_between(prompt, "next").split())
+            answer = " ".join(
+                [w for w in re.findall(r"[A-Za-z]{5,}", upcoming) if w.lower() != "blood"][:3]
+            ) or " ".join(upcoming.split()[:4])
+            if self.mode == "bad_answer":
+                answer = "Zebras juggle melons"
+            return json.dumps(
+                {
+                    "question": "Who or what turns up first in the story?",
+                    "answer": answer,
+                    "wrong_answers": ["Zebras juggle melons", "Purple dragons sneeze"]
+                    if self.mode != "bad_answer"
+                    else ["Purple dragons sneeze", "Walruses bake bread"],
+                    "hint_1": "Think about the friends and where they are.",
+                    "hint_2": "It is the first thing that happens.",
                 }
             )
         if kind == "entities":

@@ -16,6 +16,9 @@ def pipeline_version(settings: Settings) -> str:
         settings.segment_window_paragraphs,
         settings.chunk_target_chars,
         settings.chunk_max_chars,
-        *(load_prompt(name) for name in ("segment", "beat", "entities", "safety_terms")),
+        *(
+            load_prompt(name)
+            for name in ("segment", "beat", "question", "entities", "safety_terms")
+        ),
     ]
     return "v" + hashlib.sha256(json.dumps(parts).encode()).hexdigest()[:8]

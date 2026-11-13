@@ -23,9 +23,8 @@ from storyquest.models.embedder import Embedder
 from storyquest.models.llm import LLMClient
 from storyquest.stores.content_repo import ContentRepo
 
-CANON_FEEDBACK = "That is just what happened in the book!"
-OTHER_FEEDBACK = "Good idea! Here is what happened in the book."
 BACK_TO_QUEST = "Ready to go back to the quest?"
+MAX_WRONG_TRIES = 2  # after this many wrong answers the right one is shown and the quest goes on
 
 
 class PlayError(Exception):
@@ -55,7 +54,7 @@ def _playable(settings: Settings, beats: list[Beat], chunk_beats: set[int]) -> b
     )
 
 
-def _chapter_beats(
+def chapter_beats(
     repo: ContentRepo, settings: Settings, book_id: int, chapter: Chapter
 ) -> list[Beat] | None:
     beats = repo.get_beats(book_id, chapter.idx)
@@ -73,7 +72,7 @@ def list_missions(content: sqlite3.Connection, settings: Settings) -> list[Missi
         if book.visibility != "listed" and not settings.play_unpublished:
             continue
         for chapter in repo.get_chapters(book.id):
-            beats = _chapter_beats(repo, settings, book.id, chapter)
+            beats = chapter_beats(repo, settings, book.id, chapter)
             if beats:
                 missions.append(
                     Mission(book.id, book.title, chapter.idx, chapter.title, len(beats))
@@ -132,12 +131,18 @@ def _beat_view(beat: Beat) -> dict[str, Any]:
     }
 
 
-def _summary(
-    content: sqlite3.Connection, session: sqlite3.Row, beats: list[Beat]
-) -> dict[str, Any]:
+def _summary(app: sqlite3.Connection, session: sqlite3.Row, beats: list[Beat]) -> dict[str, Any]:
     vocabulary = list(dict.fromkeys(w for b in beats for w in b.vocabulary))
+    first: dict[int, str] = {}
+    for beat_idx, result in app.execute(
+        "SELECT beat_idx, route FROM session_events WHERE session_id = ? AND kind = 'choice'"
+        " ORDER BY id",
+        (session["id"],),
+    ):
+        first.setdefault(beat_idx, result)
     return {
         "beats_completed": len(beats),
+        "first_try": sum(1 for r in first.values() if r == "correct"),
         "questions_asked": session["questions"],
         "vocabulary": vocabulary,
     }
@@ -165,9 +170,14 @@ def view_session(
         "questions_left": max(0, settings.max_questions_per_session - session["questions"]),
     }
     if session["status"] == "completed":
-        view["summary"] = _summary(content, session, beats)
+        view["summary"] = _summary(app, session, beats)
     else:
-        view["beat"] = _beat_view(beats[session["beat_idx"]])
+        beat = beats[session["beat_idx"]]
+        wrong = json.loads(session["wrong_cards"])
+        view["beat"] = _beat_view(beat)
+        view["wrong_cards"] = wrong
+        if wrong:
+            view["hint"] = _hint(beat, len(wrong))
     return view
 
 
@@ -188,6 +198,14 @@ def _event(
     )
 
 
+def _hint(beat: Beat, tries: int) -> str:
+    """The hint for a child's n-th wrong answer: the written hints, or a clue if there are none."""
+    hints = [h for h in (beat.choice.get("hints", []) if beat.choice else []) if h]
+    if not hints:
+        hints = [f"Think about this: {c}." for c in beat.clues] or ["Read the story again!"]
+    return str(hints[min(tries, len(hints)) - 1])
+
+
 def choose(
     app: sqlite3.Connection,
     content: sqlite3.Connection,
@@ -195,7 +213,8 @@ def choose(
     session_id: str,
     card_id: str,
 ) -> dict[str, Any]:
-    """Take a choice card: fixed feedback, then the next beat (or the end of the quest)."""
+    """Answer the beat's question. The right card moves the quest on; a wrong one gives a hint
+    and another try, and after MAX_WRONG_TRIES wrong ones the answer is shown and it moves on."""
     session = _row(app, session_id)
     if session["status"] != "active":
         raise PlayError(409, "quest_finished", "This quest is finished. Start a new one!")
@@ -205,10 +224,33 @@ def choose(
     card = next((c for c in cards if c["id"] == card_id), None)
     if card is None:
         raise PlayError(422, "no_such_card", "Pick one of the cards on the screen.")
-    _event(app, session_id, "choice", beat.idx, card_id)
+    wrong: list[str] = json.loads(session["wrong_cards"])
+    if card_id in wrong:
+        raise PlayError(409, "already_tried", "You already tried that one. Pick another!")
+    right = next((c for c in cards if c.get("canon")), card)  # no marked answer: any card is fine
+
+    if card is right:
+        result, feedback = "correct", f"Yes! {right['text']}."
+    elif len(wrong) + 1 >= MAX_WRONG_TRIES:
+        result, feedback = "revealed", f"Nice try! The answer was: {right['text']}."
+    else:
+        result, feedback = "wrong", ""
+    _event(app, session_id, "choice", beat.idx, card_id, route=result)
+
+    if result == "wrong":
+        wrong.append(card_id)
+        app.execute(
+            "UPDATE sessions SET wrong_cards = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(wrong), time.time(), session_id),
+        )
+        view = view_session(app, content, settings, session_id)
+        view["result"] = result
+        return view
+
     last = session["beat_idx"] + 1 >= len(beats)
     app.execute(
-        "UPDATE sessions SET beat_idx = ?, status = ?, updated_at = ? WHERE id = ?",
+        "UPDATE sessions SET beat_idx = ?, status = ?, wrong_cards = '[]', updated_at = ?"
+        " WHERE id = ?",
         (
             session["beat_idx"] if last else session["beat_idx"] + 1,
             "completed" if last else "active",
@@ -217,7 +259,7 @@ def choose(
         ),
     )
     view = view_session(app, content, settings, session_id)
-    view["feedback"] = CANON_FEEDBACK if card.get("canon") else OTHER_FEEDBACK
+    view["result"], view["feedback"] = result, feedback
     return view
 
 

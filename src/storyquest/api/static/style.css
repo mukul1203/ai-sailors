@@ -115,3 +115,49 @@ input {
   border-radius: 0.8rem;
   padding: 0.6rem 1rem;
 }
+
+.toolbar { margin: 0 0 0.6rem; text-align: right; }
+.toolbar .link { color: var(--green-dark); }
+
+.library { display: grid; gap: 0.8rem; }
+.book {
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.2rem 1rem;
+}
+.book summary { cursor: pointer; padding: 0.7rem 0; font-weight: 700; font-size: 1.2rem; list-style: none; }
+.book summary::-webkit-details-marker { display: none; }
+.book summary::before { content: "\1F4C1  "; }
+.book[open] summary::before { content: "\1F4C2  "; }
+.book summary small { display: block; font-weight: 400; font-size: 0.95rem; color: #5a5964; }
+.book .about { margin: 0 0 0.6rem; font-size: 1rem; }
+.book .caution { margin: 0 0 0.6rem; font-size: 0.9rem; color: #7a5b12; }
+
+.chapters { list-style: none; margin: 0 0 0.8rem; padding: 0; display: grid; gap: 0.5rem; }
+.chapter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+.chapter .name { flex: 1 1 14rem; }
+.chapter .name small { display: block; color: #6b6a73; font-size: 0.9rem; }
+.chapter button { padding: 0.45rem 0.9rem; }
+.chapter button.secondary { background: #fff; color: var(--green-dark); border: 2px solid var(--green); }
+.chip-state { border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.85rem; background: #eee; }
+.chip-state.playable { background: #e0f4e8; }
+.chip-state.preparing { background: #fff1c7; }
+.chip-state.failed { background: #ffe3e0; }
+
+.hint {
+  background: #eaf4ff;
+  border: 2px dashed #88b6ee;
+  border-radius: 0.8rem;
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+}
+.cards button.tried { opacity: 0.45; text-decoration: line-through; border-color: #bbb; }

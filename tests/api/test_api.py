@@ -78,6 +78,24 @@ def test_development_setting_lists_unpublished_books(tmp_path: Path, seeded: Set
     assert [m["chapter_idx"] for m in missions] == [CHAPTER]
 
 
+ANSWERS = [
+    "A tiny human baby",
+    "To the Council Rock, to meet the Pack",
+    "Ten or eleven years go by",
+    "The leadership of the Pack is open",
+    "Down the hill to live with men",
+]
+
+
+def card(view: dict, text: str) -> str:  # type: ignore[type-arg]
+    """The id of the card with this text on the current beat."""
+    return next(c["id"] for c in view["beat"]["choice"]["cards"] if c["text"] == text)
+
+
+def wrong_card(view: dict, beat: int = 0) -> str:  # type: ignore[type-arg]
+    return next(c["id"] for c in view["beat"]["choice"]["cards"] if c["text"] != ANSWERS[beat])
+
+
 def test_a_session_starts_at_the_first_beat_without_leaking_the_answer_key(
     client: TestClient,
 ) -> None:
@@ -85,39 +103,67 @@ def test_a_session_starts_at_the_first_beat_without_leaking_the_answer_key(
     assert view["status"] == "active" and view["progress"] == {"beat": 1, "total": 5}
     beat = view["beat"]
     assert beat["title"] == "A Warning at the Cave" and beat["narration"]
-    assert beat["choice"]["prompt"] and len(beat["choice"]["cards"]) == 2
-    assert all(set(c) == {"id", "text"} for c in beat["choice"]["cards"])  # no canon, no next
+    assert beat["choice"]["prompt"] and len(beat["choice"]["cards"]) == 3
+    assert all(set(c) == {"id", "text"} for c in beat["choice"]["cards"])  # no canon, no hints
+    assert view["wrong_cards"] == [] and "hint" not in view
     assert client.get(f"/api/sessions/{view['id']}").json() == view  # resuming shows the same
 
 
-def test_choosing_moves_through_the_beats_to_a_summary(client: TestClient) -> None:
+def test_right_answers_move_through_the_beats_to_a_summary(client: TestClient) -> None:
     view = start(client)
     sid = view["id"]
-    first = view["beat"]["choice"]["cards"][0]["id"]
-    after = client.post(f"/api/sessions/{sid}/choice", json={"card_id": first}).json()
-    assert after["progress"]["beat"] == 2 and after["feedback"]
-    for _ in range(3):
-        card = after["beat"]["choice"]["cards"][1]["id"]
-        after = client.post(f"/api/sessions/{sid}/choice", json={"card_id": card}).json()
-    assert after["progress"]["beat"] == 5
-    last = after["beat"]["choice"]["cards"][0]["id"]
-    done = client.post(f"/api/sessions/{sid}/choice", json={"card_id": last}).json()
-    assert done["status"] == "completed" and "beat" not in done
-    assert done["summary"]["beats_completed"] == 5 and done["summary"]["vocabulary"]
-    again = client.post(f"/api/sessions/{sid}/choice", json={"card_id": last})
+    for n, answer in enumerate(ANSWERS):
+        pick = card(view, answer)
+        view = client.post(f"/api/sessions/{sid}/choice", json={"card_id": pick}).json()
+        assert view["result"] == "correct" and view["feedback"] == f"Yes! {answer}."
+        if n < 4:
+            assert view["progress"]["beat"] == n + 2
+    assert view["status"] == "completed" and "beat" not in view
+    summary = view["summary"]
+    assert summary["beats_completed"] == 5 and summary["first_try"] == 5
+    assert summary["vocabulary"]
+    again = client.post(f"/api/sessions/{sid}/choice", json={"card_id": pick})
     assert again.status_code == 409 and again.json()["error"]["code"] == "quest_finished"
 
 
-def test_the_book_choice_gets_different_feedback_from_another_idea(client: TestClient) -> None:
-    sid = start(client)["id"]
-    cards = client.get(f"/api/sessions/{sid}").json()["beat"]["choice"]["cards"]
-    a = client.post(f"/api/sessions/{sid}/choice", json={"card_id": cards[0]["id"]}).json()
-    sid2 = start(client)["id"]
-    b = client.post(f"/api/sessions/{sid2}/choice", json={"card_id": cards[1]["id"]}).json()
-    assert {a["feedback"], b["feedback"]} == {
-        "That is just what happened in the book!",
-        "Good idea! Here is what happened in the book.",
-    }
+def test_a_wrong_answer_gets_a_hint_and_another_try_then_the_answer_is_shown(
+    client: TestClient,
+) -> None:
+    view = start(client)
+    sid = view["id"]
+    first_wrong = wrong_card(view)
+    view = client.post(f"/api/sessions/{sid}/choice", json={"card_id": first_wrong}).json()
+    assert view["result"] == "wrong" and view["progress"]["beat"] == 1  # nothing moved
+    assert view["hint"].startswith("Father Wolf expected an enemy")
+    assert view["wrong_cards"] == [first_wrong] and "feedback" not in view
+    assert client.get(f"/api/sessions/{sid}").json()["hint"] == view["hint"]  # survives a reload
+
+    again = client.post(f"/api/sessions/{sid}/choice", json={"card_id": first_wrong})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "already_tried"
+
+    other = next(
+        c["id"]
+        for c in view["beat"]["choice"]["cards"]
+        if c["text"] != ANSWERS[0] and c["id"] != first_wrong
+    )
+    view = client.post(f"/api/sessions/{sid}/choice", json={"card_id": other}).json()
+    assert view["result"] == "revealed"
+    assert view["feedback"] == "Nice try! The answer was: A tiny human baby."
+    assert view["progress"]["beat"] == 2 and view["wrong_cards"] == [] and "hint" not in view
+
+
+def test_the_summary_counts_the_beats_guessed_right_first_time(client: TestClient) -> None:
+    view = start(client)
+    sid = view["id"]
+    bad = client.post(f"/api/sessions/{sid}/choice", json={"card_id": wrong_card(view)}).json()
+    view = client.post(
+        f"/api/sessions/{sid}/choice", json={"card_id": card(bad, ANSWERS[0])}
+    ).json()  # right on the second try
+    for answer in ANSWERS[1:]:
+        view = client.post(
+            f"/api/sessions/{sid}/choice", json={"card_id": card(view, answer)}
+        ).json()
+    assert view["summary"]["first_try"] == 4
 
 
 def test_a_card_that_is_not_on_screen_is_refused(client: TestClient) -> None:
@@ -180,8 +226,9 @@ def test_without_a_model_the_app_still_plays_but_the_sidekick_rests(
     sid = start(client)["id"]
     r = client.post(f"/api/sessions/{sid}/ask", json={"text": "Who is Tabaqui?"})
     assert r.status_code == 503 and r.json()["error"]["code"] == "not_ready"
-    card = client.get(f"/api/sessions/{sid}").json()["beat"]["choice"]["cards"][0]["id"]
-    assert client.post(f"/api/sessions/{sid}/choice", json={"card_id": card}).status_code == 200
+    view = client.get(f"/api/sessions/{sid}").json()
+    pick = card(view, ANSWERS[0])
+    assert client.post(f"/api/sessions/{sid}/choice", json={"card_id": pick}).status_code == 200
 
 
 def test_a_hybrid_mode_without_embeddings_becomes_its_keyword_twin(

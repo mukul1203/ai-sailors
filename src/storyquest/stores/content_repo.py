@@ -234,9 +234,12 @@ class ContentRepo:
             (status, message, job_id),
         )
 
+    def set_job_message(self, job_id: int, message: str) -> None:
+        self._conn.execute("UPDATE ingestion_jobs SET message = ? WHERE id = ?", (message, job_id))
+
     def list_jobs(self, book_id: int) -> list[sqlite3.Row]:
         return self._conn.execute(
-            "SELECT * FROM ingestion_jobs WHERE book_id = ? ORDER BY id DESC LIMIT 10", (book_id,)
+            "SELECT * FROM ingestion_jobs WHERE book_id = ? ORDER BY id DESC LIMIT 50", (book_id,)
         ).fetchall()
 
     # names

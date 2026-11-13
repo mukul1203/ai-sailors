@@ -1,0 +1,17 @@
+You write a guessing question for a story game for children aged 6 to 9, based on the book "{title}". The child has just heard this part of the story:
+"{narration}"
+
+Here is what happens next in the book (the child has NOT heard it yet):
+<next>
+{next}
+</next>
+
+Write a question that asks the child to guess what happens at the very beginning of that next part. Answer with JSON only.
+- question: a concrete question in simple words about the story itself, for example "Who comes to the cave?" or "What does Mowgli do with the fire?". Never mention "the next text" or "the next part".
+- answer: the correct answer in your own simple words, at most 8 words, true according to the next part. Do not copy a sentence from it.
+- wrong_answers: exactly 2 answers that sound possible but are NOT what happens in the next part, each at most 8 words and different from the answer.
+- hint_1: a gentle hint that points back to something the child just heard, without giving the answer.
+- hint_2: a bigger hint that nearly gives the answer, without saying it.
+
+Example for another book. The child heard: "Mia flew her red kite on a windy hill. The wind grew strong." The next part: "Suddenly the string snapped and the kite sailed far away over the pond. Mia ran after it." A correct JSON answer: {{"question": "The wind grows very strong. What happens to Mia's kite?", "answer": "The string snaps and it flies away", "wrong_answers": ["It lands safely in her hands", "It turns into a bird"], "hint_1": "Think about what a very strong wind can do to a kite.", "hint_2": "Something that holds the kite breaks."}}
+{feedback}
