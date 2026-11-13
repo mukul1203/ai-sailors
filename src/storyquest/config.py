@@ -19,6 +19,10 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def _flag(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 @dataclass(frozen=True)
 class Settings:
     root: Path
@@ -45,6 +49,11 @@ class Settings:
     embedding_requests_per_minute: int
     generation_max_tokens: int
     max_child_input_chars: int
+    play_mode: str
+    play_unpublished: bool
+    max_questions_per_session: int
+    ask_min_interval_seconds: float
+    api_debug: bool
     data_dir: Path
     api_port: int
     dbviewer_port: int
@@ -94,6 +103,11 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         embedding_requests_per_minute=int(get("EMBEDDING_REQUESTS_PER_MINUTE", "30")),
         generation_max_tokens=int(get("GENERATION_MAX_TOKENS", "200")),
         max_child_input_chars=int(get("MAX_CHILD_INPUT_CHARS", "300")),
+        play_mode=get("PLAY_MODE", "M2S"),
+        play_unpublished=_flag(get("PLAY_UNPUBLISHED", "false")),
+        max_questions_per_session=int(get("MAX_QUESTIONS_PER_SESSION", "10")),
+        ask_min_interval_seconds=float(get("ASK_MIN_INTERVAL_SECONDS", "2")),
+        api_debug=_flag(get("API_DEBUG", "false")),
         data_dir=path(get("DATA_DIR", "var")),
         api_port=int(get("API_PORT", "8000")),
         dbviewer_port=int(get("DBVIEWER_PORT", "8001")),

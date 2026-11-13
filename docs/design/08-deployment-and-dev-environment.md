@@ -52,6 +52,10 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `SEGMENT_WINDOW_PARAGRAPHS` | `60`; paragraph openings shown to the model per segmentation call |
 | `INGEST_RETRIES` | `2`; how often a beat that fails validation is asked again |
 | `RETRIEVAL_TOP_K` | `6`; passages given to the model per turn |
+| `PLAY_MODE` | `M2S`; the mode that answers a child's questions (a hybrid mode becomes its keyword twin without embeddings) |
+| `PLAY_UNPUBLISHED` | `true` locally (lists unpublished books and unapproved beats, for development and review), `false` in `config.prod.env` |
+| `MAX_QUESTIONS_PER_SESSION` / `ASK_MIN_INTERVAL_SECONDS` | `10` / `2`; a child's question limit per quest and the minimum gap between questions |
+| `API_DEBUG` | `false`; `true` adds route and flags to answers and enables `/api/docs` |
 | `RETRIEVAL_CANDIDATES` | `20`; candidates taken from each of keyword and meaning search before fusing |
 | `RRF_K` | `60`; reciprocal rank fusion constant |
 | `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `gemini` / `gemini-embedding-001` / `768` (`fake` for tests) |
@@ -121,7 +125,7 @@ The [Makefile](../../Makefile) is the single entry point for developer tasks; `m
 | Area | Targets |
 |---|---|
 | Getting started | `help`, `setup`, `doctor`, `llm-ping` |
-| Run | `dev`, `dev-api`, `dev-worker`, `dev-web`, `up`, `down`, `logs`, `ps`, `build` |
+| Run | `dev` (API with the UI, and the ingestion worker), `dev-api`, `dev-worker`, `dev-web` (unused), `up`, `down`, `logs`, `ps`, `build` |
 | Quality | `check-data`, `test`, `lint`, `format`, `typecheck`, `check` |
 | Data and ingestion | `migrate`, `seed`, `admin-user`, `ingest BOOK=`, `inspect BOOK=`, `db-shell DB=`, `db-viewer DATA=`, `db-reset` |
 | Evaluation | `eval MODES= SPLIT=`, `eval-report RUN=` |

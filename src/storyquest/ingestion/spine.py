@@ -10,6 +10,16 @@ from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.text import Cleaned, normalize_title
 
 
+def _with_canon(choice: dict[str, Any]) -> dict[str, Any]:
+    """Mark which card is what the book does. The spine says so with a note on the other card
+    ("canon is B2-a"); where it says nothing, the first card is the canon one."""
+    cards: list[dict[str, Any]] = choice.get("cards", [])
+    if not cards or any("canon" in c for c in cards):
+        return choice
+    canon = next((i for i, c in enumerate(cards) if not c.get("note")), 0)
+    return {**choice, "cards": [{**c, "canon": i == canon} for i, c in enumerate(cards)]}
+
+
 def _starts_paragraph(text: str, offset: int) -> bool:
     return re.search(r"\n[ \t]*\n\Z", text[max(0, offset - 200) : offset]) is not None
 
@@ -48,7 +58,7 @@ def load_spine(path: Path, cleaned: Cleaned, chapters: list[Chapter]) -> tuple[i
             end_char=end,
             clues=b["clues"],
             vocabulary=b["vocabulary"],
-            choice=b["choice"],
+            choice=_with_canon(b["choice"]),
             spoiler_reveals=b["spoiler_reveals"],
             review_status="approved",
             source="spine",

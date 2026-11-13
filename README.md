@@ -4,10 +4,11 @@ StoryQuest Copilot: a parent-approved, book-grounded storytelling game for child
 built on public-domain Project Gutenberg books with a retrieval-augmented agent. Capstone project
 (Track B: hosted Qwen3-8B, no GPU).
 
-What exists today: the ingestion pipeline (without LLM stages), keyword and hybrid (keyword plus
-meaning) retrieval with a spoiler filter, the agent in several modes, and an evaluation harness
-with an HTML report. The web app, admin area and deployment are not built yet; their `make`
-targets print a clear message.
+What exists today: the ingestion pipeline including the model-based stages and review, keyword and
+hybrid (keyword plus meaning) retrieval with a spoiler filter, the agent in several modes, an
+evaluation harness with an HTML report, and a playable quest in the browser (an API plus a plain
+web page, no accounts yet). The parent and admin areas and deployment are not built yet; their
+`make` targets print a clear message.
 
 ## Quick start
 
@@ -44,7 +45,18 @@ make inspect BOOK=236                # chapters, beats and chunks
 make db-viewer                       # browse the databases at http://localhost:8001
 ```
 
-6. Evaluate and read the report (opens in your browser, takes a while: the model endpoint handles
+6. Play the game in your browser (children's view): choose what happens next and ask the sidekick
+   questions. The model answers the questions, so this needs the model key and certificate.
+
+```
+make dev-api                         # then open http://localhost:8000
+```
+
+   Locally the page lists every chapter that has beats (`PLAY_UNPUBLISHED=true` in `config.env`).
+   Without that setting only published books with approved beats are listed. Without a model key
+   you can still click through the quest; the sidekick just says it is resting.
+
+7. Evaluate and read the report (opens in your browser, takes a while: the model endpoint handles
    one request at a time):
 
 ```

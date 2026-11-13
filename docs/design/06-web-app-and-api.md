@@ -2,6 +2,21 @@
 
 Scope: parent and child experience, the HTTP API, auth, progress and job status. The UI lists what the DB holds; it hardcodes no books.
 
+## Built so far: the play slice
+
+The child's quest works end to end without accounts: `make dev-api` serves the API and a plain HTML, CSS and JavaScript page (no build step, in `src/storyquest/api/static`) at http://localhost:8000. The React single-page app and parent, admin and auth areas below are not built; the play endpoints are the ones the React app will keep.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/health` | Whether the model is configured, and the mode used for questions |
+| `GET /api/missions` | Playable chapters: published books whose beats are all approved and chunked (with `PLAY_UNPUBLISHED=true`, any book whose beats have content) |
+| `POST /api/sessions` | Start a quest for `{book_id, chapter_idx}`; returns the first beat |
+| `GET /api/sessions/{id}` | The current beat (or the summary): resume after a reload |
+| `POST /api/sessions/{id}/choice` | `{card_id}`: fixed feedback ("That is just what happened in the book!" or "Good idea! Here is what happened in the book.") and the next beat; no model call |
+| `POST /api/sessions/{id}/ask` | `{text}`: the live agent answers at the child's position; the reply ends with a nudge back to the choice |
+
+Rules as built: the server owns position, status and the question count; the client never sends a position. A card id must be one on the current beat. A quest has at most `MAX_QUESTIONS_PER_SESSION` questions with at least `ASK_MIN_INTERVAL_SECONDS` between them, otherwise 409 or 429. Errors are `{"error": {"code", "message"}}` in child-friendly words. The question mode is `PLAY_MODE` (M2S by default; without the embeddings it becomes M1S, and without a model key the app still plays but the sidekick "is resting", 503). Debug details (route, flags) appear only with `API_DEBUG=true`, as does the API explorer at `/api/docs`. The UI writes server text with `textContent` only, and responses carry a strict content security policy. Choosing needs no model, so only free-text questions cost model calls.
+
 ## Roles and flows
 
 **Admin (app developers only)**

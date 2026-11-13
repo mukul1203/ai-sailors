@@ -86,20 +86,24 @@ llm-ping: ## Send a tiny request to the model endpoint to verify key, certificat
 
 ##@ Run
 
-# Starts the API, worker and web server in parallel. Not built yet.
-dev: _need-code _need-web ## Run API, worker and web dev server together (hot reload)
-	@$(MAKE) -j3 --output-sync=target dev-api dev-worker dev-web
+# Starts the API (with the web UI it serves) and the ingestion worker in parallel. There is no
+# separate web dev server: the UI is plain files in src/storyquest/api/static.
+dev: _need-code ## Run the API (and the UI it serves) and the ingestion worker together
+	@$(MAKE) -j2 --output-sync=target dev-api dev-worker
 
-# uvicorn serves the API on API_PORT and restarts when code changes. Not built yet.
-dev-api: _need-code ## Run the API with reload
-	@$(ENV) $(BIN)/uvicorn storyquest.api.main:app --reload --port "$${API_PORT:-8000}"
+# Serves the API and the child's web UI at http://localhost:$(API_PORT) (default 8000) and restarts
+# when code changes. Uses the model for children's questions (PLAY_MODE in config.env; M2S needs
+# `make embed`, otherwise it falls back to M1S). Books must be ingested and, unless
+# PLAY_UNPUBLISHED=true (the local default), published.
+dev-api: _need-code ## Run the API and web UI with reload: http://localhost:8000
+	@$(ENV) $(BIN)/uvicorn storyquest.api.main:create_app --factory --reload --port "$${API_PORT:-8000}"
 
 # Processes queued ingestion jobs. Same as `make worker`.
 dev-worker: _need-code ## Run the ingestion worker
 	@$(ENV) $(BIN)/storyquest worker
 
 # Vite dev server for the React app. Not built yet.
-dev-web: _need-web ## Run the React dev server
+dev-web: _need-web ## Run the React dev server (not used: the UI is served by the API)
 	@npm --prefix web run dev
 
 # up, down, logs, ps and build are thin wrappers around `docker compose`. Not built yet.

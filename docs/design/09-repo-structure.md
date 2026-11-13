@@ -105,9 +105,10 @@ src/storyquest/
 │   ├── tools.py                retrieve_canon, lookup_entity, advance_beat, award_badge
 │   └── prompts/
 ├── api/                      HTTP layer (doc 06)
-│   ├── main.py                 app factory, static files, health
-│   ├── auth.py  deps.py  schemas.py
-│   └── routes/                 catalog, family, children, sessions, admin, health
+│   ├── main.py                 app factory (`create_app`), routes, security headers, serves the UI
+│   ├── play.py                 the play service: missions, sessions, choices, questions, purge
+│   ├── static/                 index.html, app.js, style.css: the child's UI (no build step)
+│   └── auth.py  deps.py  schemas.py  routes/   later: accounts, family, admin
 └── evaluation/               eval harness (doc 07)
     ├── runner.py  checks.py  judge.py  failure_labels.py
     ├── report/                 HTML template and builder

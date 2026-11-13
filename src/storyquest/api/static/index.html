@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StoryQuest</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>StoryQuest</h1>
+    <button id="home-btn" class="link" hidden>All stories</button>
+  </header>
+
+  <main>
+    <section id="home" hidden>
+      <p class="lead">Pick a story to play. Choose what happens next, and ask your sidekick anything about the book!</p>
+      <div id="missions" class="missions"></div>
+      <p id="empty" class="note" hidden>No stories are ready yet. A grown-up needs to load and approve a book first.</p>
+    </section>
+
+    <section id="quest" hidden>
+      <div class="progress" id="progress" aria-live="polite"></div>
+      <p id="feedback" class="feedback" hidden></p>
+      <article class="card">
+        <h2 id="beat-title"></h2>
+        <p id="narration" class="narration"></p>
+        <div id="clues" class="chips"></div>
+        <div id="words" class="chips words"></div>
+      </article>
+
+      <div class="card choice">
+        <h3 id="choice-prompt"></h3>
+        <div id="cards" class="cards"></div>
+      </div>
+
+      <form id="ask-form" class="card ask" autocomplete="off">
+        <label for="question">Ask your sidekick about the story</label>
+        <div class="row">
+          <input id="question" maxlength="300" placeholder="Why does Shere Khan limp?" required>
+          <button type="submit" id="ask-btn">Ask</button>
+        </div>
+        <p id="questions-left" class="note"></p>
+        <div id="answers" class="answers" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section id="finish" hidden>
+      <article class="card">
+        <h2>Quest complete!</h2>
+        <p id="finish-text"></p>
+        <div id="finish-words" class="chips words"></div>
+        <button id="again-btn">Play another story</button>
+      </article>
+    </section>
+
+    <p id="error" class="error" role="alert" hidden></p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

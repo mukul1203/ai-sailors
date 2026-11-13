@@ -14,6 +14,7 @@ from storyquest.agent.context import AgentError, load_context
 from storyquest.agent.modes import Mode, get_mode
 from storyquest.agent.render import render_turn
 from storyquest.agent.turn import run_turn
+from storyquest.api.play import purge_sessions
 from storyquest.catalog.importer import CatalogError, import_books
 from storyquest.config import Settings, load_settings
 from storyquest.domain.position import Position
@@ -81,6 +82,18 @@ def _db_migrate() -> int:
     conn = connect(settings.data_dir / "content.db")
     applied = migrate(conn, migrations_dir("content"))
     print(f"content.db: applied {applied}" if applied else "content.db: up to date")
+    app_conn = connect(settings.data_dir / "app.db")
+    applied = migrate(app_conn, migrations_dir("app"))
+    print(f"app.db: applied {applied}" if applied else "app.db: up to date")
+    return 0
+
+
+def _purge_sessions(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    conn = connect(settings.data_dir / "app.db")
+    migrate(conn, migrations_dir("app"))
+    count = purge_sessions(conn, args.days)
+    print(f"Deleted {count} play session(s) not used for {args.days} days.")
     return 0
 
 
@@ -421,6 +434,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     ents = sub.add_parser("entities", help="List a book's entity cards")
     ents.add_argument("book", type=int)
 
+    purge = sub.add_parser("purge-sessions", help="Delete play sessions not used for N days")
+    purge.add_argument("--days", type=float, default=30)
+
     work = sub.add_parser("worker", help="Process queued ingestion jobs")
     work.add_argument("--once", action="store_true", help="stop when the queue is empty")
     work.add_argument("--no-cache", action="store_true")
@@ -505,6 +521,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _entities(args)
     if args.command == "worker":
         return _worker(args)
+    if args.command == "purge-sessions":
+        return _purge_sessions(args)
     if args.command == "inspect":
         return _inspect(args)
     if args.command == "search":

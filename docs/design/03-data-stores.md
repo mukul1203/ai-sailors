@@ -46,6 +46,7 @@ Notes:
 
 Notes:
 
+- Built so far (migration `app/0001_play.sql`): anonymous play sessions only. `sessions` has `id` (a random token), `book_id`, `chapter_idx`, `beat_idx`, `status` (`active` or `completed`), `mode`, `questions`, `created_at`, `updated_at`; `session_events` has the choices and questions of a session (`kind`, `beat_idx`, `text`, `reply`, `route`, `flags`). There are no accounts yet, so the tables above are still to come, and this `sessions` table will then link to a child. `storyquest purge-sessions --days N` deletes sessions not used for N days, with their events: child text is kept only as long as the retention you choose.
 - Progress is autosaved server-side on every turn; the client is never trusted for position.
 - `progress.pipeline_version` pins the child to the beat version they started with.
 - `turns` holds child text and must follow a retention policy (see overview open questions).
