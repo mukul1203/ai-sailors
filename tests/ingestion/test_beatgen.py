@@ -13,6 +13,7 @@ from storyquest.ingestion.beatgen import (
     retell_from_answer,
     with_spoilers,
 )
+from storyquest.ingestion.validate import check_beat
 
 SCENE = (
     "\u201cHe has no right!\u201d Father Wolf began angrily. \u201cBy the Law of the Jungle he "
@@ -95,8 +96,11 @@ def test_a_right_answer_that_is_not_in_the_next_text_is_retried_and_flagged() ->
     llm.mode = "bad_answer"
     beat = run(llm)
     assert llm.calls_of("question") == 3
-    assert any("NEXT text" in f for f in beat.flags)
+    assert any("no guessing question" in f and "NEXT text" in f for f in beat.flags)
     assert beat.narration and beat.clues  # the retelling is kept: only the question failed
+    assert beat.choice["kind"] == "continue" and len(beat.choice["cards"]) == 1
+    assert beat.choice["cards"][0]["canon"] and beat.choice["hints"] == []
+    assert check_beat(beat, SCENE, NEXT) == check_beat(beat, SCENE)  # a plain continue is valid
 
 
 def test_an_unreadable_answer_leaves_a_flagged_empty_beat() -> None:

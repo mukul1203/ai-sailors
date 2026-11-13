@@ -127,6 +127,8 @@ def check_question(beat: Beat, next_scene: str | None) -> list[Problem]:
     """The question must have one right answer that the next scene backs, wrong answers it does
     not back, two hints that do not give the answer away, and a narration that does not tell it."""
     choice = beat.choice or {}
+    if choice.get("kind") == "continue":
+        return []  # a beat with no question: one button to carry on
     cards = choice.get("cards", [])
     hints = [str(h) for h in choice.get("hints", []) if str(h).strip()]
     if len(str(choice.get("prompt", ""))) < 10 or not 2 <= len(cards) <= 3:

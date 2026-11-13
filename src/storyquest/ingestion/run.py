@@ -16,6 +16,7 @@ from pathlib import Path
 from storyquest.config import Settings
 from storyquest.domain.book import Beat, Chapter, Entity
 from storyquest.ingestion.beatgen import generate_beat, peek, with_spoilers
+from storyquest.ingestion.chapters import heading_end
 from storyquest.ingestion.entities import clean_aliases, extract_from_beat, merge_into
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.pipeline import Prepared, build_chunks, prepare
@@ -77,10 +78,11 @@ def _digest(*parts: object) -> str:
 
 def scene_text(text: str, chapter: Chapter, beat: Beat) -> str:
     """The beat's words, without the chapter's title line."""
-    start = beat.start_char
-    if start <= chapter.start_char:
-        newline = text.find("\n", chapter.start_char)
-        start = newline + 1 if newline >= 0 else start
+    start = (
+        max(beat.start_char, heading_end(text, chapter))
+        if beat.start_char <= chapter.start_char
+        else beat.start_char
+    )
     return text[start : beat.end_char].strip()
 
 

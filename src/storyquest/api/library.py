@@ -66,7 +66,10 @@ def _chapter_state(
 
 def library(content: sqlite3.Connection, settings: Settings) -> list[dict[str, Any]]:
     """Every listed book with its story chapters and what state each is in."""
-    _, scan_errors = scan_books(content, settings.data_dir, settings.books_dir)
+    scan_errors: list[str] = []
+    for folder in settings.books_dirs:
+        _, errors = scan_books(content, settings.data_dir, folder)
+        scan_errors += errors
     repo = ContentRepo(content)
     out: list[dict[str, Any]] = []
     for book in repo.list_books():

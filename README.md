@@ -68,6 +68,32 @@ make eval ARGS="--category SPO --limit 5"   # a quick subset
 Everything has a `make` target; `make help` lists them all, and each target has a comment in the
 [Makefile](Makefile) explaining what it does.
 
+## Adding your own stories
+
+Put each book in its own folder under **`books/`**:
+
+```
+books/
+  11-alice/
+    raw.txt        the Project Gutenberg plain-text file (UTF-8), header and footer included
+    book.yaml      gutenberg_id: 11
+                   title: Alice's Adventures in Wonderland
+                   author: Lewis Carroll
+                   # optional: summary, content_notes, age_band, visibility, sha256
+```
+
+Then `make dev-api` and open http://localhost:8000. The book appears as a folder (click "Look for
+new books" if the page was already open); open it to see its chapters. Choose **Prepare this
+story** on a chapter and the model builds it while you wait (a few minutes per chapter: the model
+serves one request at a time, and the line under the chapter shows the progress). When it says
+**Ready to play**, press Play. Locally, unreviewed chapters are playable; for children, set
+`PLAY_UNPUBLISHED=false` so only reviewed, published books show (`make review`, `make approve`,
+`make publish`).
+
+A book with a Contents list is split into its chapters; one without is a single story. If a book
+cannot be read, the page says why and the other books still work. `BOOKS_DIR` in
+[config.env](config.env) lists the folders that are scanned (default `books,eval/books`).
+
 ## Ingesting a whole book (model-based stages)
 
 `make demo-data` loads chapter 1 of the Jungle Book with its hand-written beats. The other

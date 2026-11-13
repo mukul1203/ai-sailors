@@ -10,7 +10,7 @@ def write(path: Path, text: str) -> None:
 def test_defaults_when_no_files(tmp_path: Path) -> None:
     s = load_settings(tmp_path, environ={})
     assert s.llm_max_concurrency == 1
-    assert (s.chunk_target_chars, s.chunk_max_chars, s.short_chapter_chars) == (500, 1800, 8000)
+    assert (s.chunk_target_chars, s.chunk_max_chars, s.short_chapter_chars) == (500, 1800, 3500)
     assert s.llm_timeout_seconds == 120.0
     assert s.data_dir == tmp_path / "var"
     assert s.llm_api_key == ""

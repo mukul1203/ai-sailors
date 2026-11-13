@@ -11,4 +11,4 @@ from storyquest.ingestion.text import Cleaned, clean
 def jungle(eval_dir: Path) -> tuple[Cleaned, list[Chapter]]:
     raw = (eval_dir / "books" / "236-the-jungle-book" / "raw.txt").read_text()
     cleaned = clean(raw)
-    return cleaned, detect_chapters(cleaned, short_chapter_chars=8000)
+    return cleaned, detect_chapters(cleaned, short_chapter_chars=3500)

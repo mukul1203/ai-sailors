@@ -47,8 +47,10 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `LLM_TIMEOUT_SECONDS` | `120`; how long one model call may take |
 | `CHUNK_TARGET_CHARS` | `500`; ingestion aims for chunks about this long (smaller chunks make it easier for the model to pick the right evidence sentence) |
 | `CHUNK_MAX_CHARS` | `1800`; a paragraph longer than this is split on sentences |
-| `SHORT_CHAPTER_CHARS` | `8000`; chapters shorter than this are labelled poems |
-| `BEAT_TARGET_CHARS` / `BEAT_MIN_CHARS` / `BEAT_MAX_CHARS` | `6000` / `2500` / `11000`; size of a generated beat |
+| `SHORT_CHAPTER_CHARS` | `3500`; shorter chapters, or ones made of short indented lines, are labelled poems |
+| `BEAT_TARGET_CHARS` / `BEAT_MIN_CHARS` / `BEAT_MAX_CHARS` | `3500` / `1800` / `6500`; size of a generated beat |
+| `BOOKS_DIR` | `books,eval/books`; comma-separated folders the library scans (one subfolder per book) |
+| `INGEST_IN_API` | `true`; the API runs queued chapter preparation in a background thread (`false`: use `make worker`) |
 | `SEGMENT_WINDOW_PARAGRAPHS` | `60`; paragraph openings shown to the model per segmentation call |
 | `INGEST_RETRIES` | `2`; how often a beat that fails validation is asked again |
 | `RETRIEVAL_TOP_K` | `6`; passages given to the model per turn |

@@ -132,6 +132,24 @@ def question_from_answer(data: dict[str, Any], base: Beat, *, has_next: bool) ->
         return None
 
 
+def continue_choice(base: Beat, *, has_next: bool) -> dict[str, Any]:
+    """What a beat offers when it has no usable question: one button to carry on."""
+    number = base.idx + 1
+    return {
+        "kind": "continue",
+        "prompt": "Ready to find out what happens next?" if has_next else "Ready to finish?",
+        "cards": [
+            {
+                "id": f"B{number}-a",
+                "text": "Yes, let's go!",
+                "next": f"B{number + 1}" if has_next else "end",
+                "canon": True,
+            }
+        ],
+        "hints": [],
+    }
+
+
 def drop_untraceable(beat: Beat, scene: str) -> tuple[Beat, list[str]]:
     """Remove clues whose quote is not in the scene and vocabulary that does not occur in it."""
     scene_norm = normalise(scene)
@@ -271,7 +289,15 @@ def generate_beat(
         settings=settings,
     )  # fmt: skip
     flags = [p.message for p in check_retell(with_question, scene)]
-    flags += [p.message for p in question_problems]
+    if any(p.retry for p in question_problems):
+        # A bad guessing question would spoil the game: use a plain "continue" instead.
+        reasons = "; ".join(p.message for p in question_problems if p.retry)
+        with_question = dataclasses.replace(
+            with_question, choice=continue_choice(base, has_next=has_next)
+        )
+        flags.append(f"no guessing question, the model's failed validation: {reasons}")
+    else:
+        flags += [p.message for p in question_problems]
     return dataclasses.replace(with_question, flags=[*notes, *dropped, *flags])
 
 

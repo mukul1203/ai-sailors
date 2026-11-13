@@ -13,6 +13,7 @@ from typing import Any
 
 from storyquest.config import Settings
 from storyquest.domain.book import Beat, Chapter
+from storyquest.ingestion.chapters import heading_end
 from storyquest.ingestion.chunking import Span, paragraph_spans
 from storyquest.ingestion.prompts import load_prompt
 from storyquest.models.llm import LLMClient
@@ -31,14 +32,7 @@ class Segmentation:
 
 def chapter_paragraphs(text: str, chapter: Chapter) -> list[Span]:
     """The chapter's paragraphs, without its title line."""
-    return paragraph_spans(
-        text, chapter.start_char + _title_length(text, chapter), chapter.end_char
-    )
-
-
-def _title_length(text: str, chapter: Chapter) -> int:
-    newline = text.find("\n", chapter.start_char)
-    return 0 if newline < 0 else newline + 1 - chapter.start_char
+    return paragraph_spans(text, heading_end(text, chapter), chapter.end_char)
 
 
 def _preview(text: str, span: Span) -> str:

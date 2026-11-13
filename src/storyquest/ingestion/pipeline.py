@@ -8,7 +8,7 @@ from pathlib import Path
 
 from storyquest.config import Settings
 from storyquest.domain.book import Book, Chapter, Chunk
-from storyquest.ingestion.chapters import detect_chapters
+from storyquest.ingestion.chapters import detect_chapters, heading_end
 from storyquest.ingestion.chunking import chunk_span
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.names import find_names
@@ -67,7 +67,9 @@ def prepare(
         f"-{cleaned.line_at(len(cleaned.text) - 1)}"
     )
 
-    chapters = detect_chapters(cleaned, short_chapter_chars=settings.short_chapter_chars)
+    chapters = detect_chapters(
+        cleaned, short_chapter_chars=settings.short_chapter_chars, book_title=book.title
+    )
     stories = [c for c in chapters if c.included]
     log(
         f"chapters {len(chapters)} found: {len(stories)} story, {len(chapters) - len(stories)} poem"
@@ -103,11 +105,11 @@ def build_chunks(
     for chapter in prepared.stories:
         beats = repo.get_beats(prepared.book.id, chapter.idx)
         total_beats += len(beats)
-        heading_end = cleaned.text.find("\n", chapter.start_char) + 1  # the title is not story text
+        story_start = heading_end(cleaned.text, chapter)  # the title is not story text
         for beat in beats:
             spans = chunk_span(
                 cleaned.text,
-                max(beat.start_char, heading_end),
+                max(beat.start_char, story_start),
                 beat.end_char,
                 target=settings.chunk_target_chars,
                 max_len=settings.chunk_max_chars,

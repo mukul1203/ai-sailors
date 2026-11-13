@@ -49,7 +49,7 @@ class Settings:
     embedding_requests_per_minute: int
     generation_max_tokens: int
     max_child_input_chars: int
-    books_dir: Path
+    books_dirs: tuple[Path, ...]
     ingest_in_api: bool
     play_mode: str
     play_unpublished: bool
@@ -90,7 +90,7 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         llm_timeout_seconds=float(get("LLM_TIMEOUT_SECONDS", "120")),
         chunk_target_chars=int(get("CHUNK_TARGET_CHARS", "500")),
         chunk_max_chars=int(get("CHUNK_MAX_CHARS", "1800")),
-        short_chapter_chars=int(get("SHORT_CHAPTER_CHARS", "8000")),
+        short_chapter_chars=int(get("SHORT_CHAPTER_CHARS", "3500")),
         beat_target_chars=int(get("BEAT_TARGET_CHARS", "3500")),
         beat_min_chars=int(get("BEAT_MIN_CHARS", "1800")),
         beat_max_chars=int(get("BEAT_MAX_CHARS", "6500")),
@@ -105,7 +105,9 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         embedding_requests_per_minute=int(get("EMBEDDING_REQUESTS_PER_MINUTE", "30")),
         generation_max_tokens=int(get("GENERATION_MAX_TOKENS", "200")),
         max_child_input_chars=int(get("MAX_CHILD_INPUT_CHARS", "300")),
-        books_dir=path(get("BOOKS_DIR", "eval/books")),
+        books_dirs=tuple(
+            path(p.strip()) for p in get("BOOKS_DIR", "books,eval/books").split(",") if p.strip()
+        ),
         ingest_in_api=_flag(get("INGEST_IN_API", "true")),
         play_mode=get("PLAY_MODE", "M2S"),
         play_unpublished=_flag(get("PLAY_UNPUBLISHED", "false")),

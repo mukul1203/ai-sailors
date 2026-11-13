@@ -9,10 +9,12 @@ The child's quest works end to end without accounts: `make dev-api` serves the A
 | Endpoint | What it does |
 |---|---|
 | `GET /api/health` | Whether the model is configured, and the mode used for questions |
+| `GET /api/library` | Every book found in `BOOKS_DIR` with its story chapters and the state of each: `playable`, `not_prepared`, `preparing` (with the latest progress line) or `failed` (with the reason). New folders are imported and read on the way |
+| `POST /api/library/{book_id}/chapters/{idx}/prepare` | Queue the model stages for one chapter (asking twice joins the same job); a worker thread in the API runs it |
 | `GET /api/missions` | Playable chapters: published books whose beats are all approved and chunked (with `PLAY_UNPUBLISHED=true`, any book whose beats have content) |
 | `POST /api/sessions` | Start a quest for `{book_id, chapter_idx}`; returns the first beat |
 | `GET /api/sessions/{id}` | The current beat (or the summary): resume after a reload |
-| `POST /api/sessions/{id}/choice` | `{card_id}`: fixed feedback ("That is just what happened in the book!" or "Good idea! Here is what happened in the book.") and the next beat; no model call |
+| `POST /api/sessions/{id}/choice` | `{card_id}`: the beat's question has one right card. Right: "Yes! <answer>." and the next beat. Wrong: a hint and another try (the card is greyed out); after 2 wrong tries the answer is shown and the quest goes on. A beat with no question has one "Yes, let's go!" card. No model call |
 | `POST /api/sessions/{id}/ask` | `{text}`: the live agent answers at the child's position; the reply ends with a nudge back to the choice |
 
 Rules as built: the server owns position, status and the question count; the client never sends a position. A card id must be one on the current beat. A quest has at most `MAX_QUESTIONS_PER_SESSION` questions with at least `ASK_MIN_INTERVAL_SECONDS` between them, otherwise 409 or 429. Errors are `{"error": {"code", "message"}}` in child-friendly words. The question mode is `PLAY_MODE` (M2S by default; without the embeddings it becomes M1S, and without a model key the app still plays but the sidekick "is resting", 503). Debug details (route, flags) appear only with `API_DEBUG=true`, as does the API explorer at `/api/docs`. The UI writes server text with `textContent` only, and responses carry a strict content security policy. Choosing needs no model, so only free-text questions cost model calls.

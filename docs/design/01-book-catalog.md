@@ -50,6 +50,8 @@ The volume path is behind a `BookStore` interface, so it can move to object stor
 4. The parent UI lists books from the DB, so the new book appears automatically once it is `ready`.
 5. The admin triggers ingestion from the admin view (or the CLI, which calls the same function). See doc 02.
 
+**Dropping in a book (local development).** Put a folder in `books/` (any name, for example `books/11-alice/`) with `raw.txt` (the Project Gutenberg plain-text file, UTF-8, header and footer included) and `book.yaml` with `gutenberg_id`, `title` and `author`; `summary`, `content_notes`, `age_band`, `visibility` and `sha256` (checked if present) are optional. The library (`GET /api/library`, the web page) imports new folders itself, runs the model-free ingestion stages and shows the chapters at once; a folder that cannot be read is listed with the reason and does not hide the others. Choosing a chapter prepares it (see doc 02 and doc 06). `storyquest catalog import <dir>` does the same for a whole folder from the CLI. The `eval/books/` folder holds the Jungle Book fixture.
+
 For local development and tests, `storyquest catalog import <dir>` seeds books from a folder such as `eval/books/`. Each book folder holds `raw.txt` and a `book.yaml` with the same fields as the book record below (the Jungle Book fixture shows the format).
 
 ## Statuses

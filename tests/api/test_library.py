@@ -49,7 +49,7 @@ def write_book(folder: Path, *, book_id: int = TINY, with_sha: bool = False) -> 
 def make_settings(tmp_path: Path, **env: str) -> Settings:
     base = {
         "DATA_DIR": str(tmp_path / "data"),
-        "BOOKS_DIR": str(tmp_path / "books"),
+        "BOOKS_DIR": f"{tmp_path / 'books'},{tmp_path / 'more'}",
         "PLAY_UNPUBLISHED": "true",
         "INGEST_IN_API": "false",
         "CHUNK_TARGET_CHARS": "1200",
