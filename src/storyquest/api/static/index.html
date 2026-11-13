@@ -9,15 +9,18 @@
 <body>
   <header>
     <h1>StoryQuest</h1>
-    <button id="home-btn" class="link" hidden>All stories</button>
+    <nav id="tabs" aria-label="Sections">
+      <button class="tab" data-tab="play">Play</button>
+      <button class="tab" data-tab="books">Books</button>
+      <button class="tab" data-tab="review">Review</button>
+    </nav>
   </header>
 
   <main>
     <section id="home" hidden>
       <p class="lead">Open a book, pick a chapter, and play! Choose what you think happens next, and ask your sidekick anything about the story.</p>
-      <div class="toolbar"><button id="refresh-btn" class="link">Look for new books</button></div>
       <div id="library" class="library"></div>
-      <p id="empty" class="note" hidden>No books yet. A grown-up can put a book folder in the books folder (see the README).</p>
+      <p id="empty" class="note" hidden>No stories are ready yet. A grown-up can add and prepare one in the Books tab, then review and publish it in the Review tab.</p>
     </section>
 
     <section id="quest" hidden>
@@ -56,6 +59,33 @@
       </article>
     </section>
 
+    <section id="books" hidden>
+      <p class="lead">For grown-ups: add a book, then prepare its chapters. The model writes the story parts and questions; you check them in the Review tab.</p>
+      <details class="card add">
+        <summary>Add a book from Project Gutenberg</summary>
+        <form id="add-form" class="form" autocomplete="off">
+          <label>Gutenberg number <input id="add-id" type="number" min="1" required></label>
+          <label>Title <input id="add-title" maxlength="200" required></label>
+          <label>Author <input id="add-author" maxlength="200" required></label>
+          <label>Summary <input id="add-summary" maxlength="2000"></label>
+          <label>Notes for grown-ups <input id="add-notes" maxlength="1000"></label>
+          <label>Plain-text file (.txt) <input id="add-file" type="file" accept=".txt,text/plain" required></label>
+          <button type="submit">Add the book</button>
+        </form>
+      </details>
+      <div class="toolbar"><button id="books-refresh" class="link">Look for new books</button></div>
+      <div id="books-list" class="library"></div>
+      <p id="books-empty" class="note" hidden>No books yet. Add one above, or put a folder in the books folder (see the README).</p>
+    </section>
+
+    <section id="review" hidden>
+      <p class="lead">For grown-ups: read what the model wrote, approve it, then publish the book so children can play it.</p>
+      <label class="pick">Book <select id="review-book"></select></label>
+      <div id="review-body"></div>
+      <p id="review-empty" class="note" hidden>No books to review yet.</p>
+    </section>
+
+    <p id="notice" class="notice" role="status" hidden></p>
     <p id="error" class="error" role="alert" hidden></p>
   </main>
 

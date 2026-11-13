@@ -81,6 +81,7 @@ def library(content: sqlite3.Connection, settings: Settings) -> list[dict[str, A
             "author": book.author,
             "summary": book.summary,
             "content_notes": book.content_notes,
+            "status": book.status,
             "chapters": [],
             "error": "",
         }

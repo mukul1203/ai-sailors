@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from storyquest.agent.modes import Mode, get_mode
-from storyquest.api import library, play
+from storyquest.api import admin, library, play
 from storyquest.config import Settings, load_settings
 from storyquest.ingestion.worker import run_worker
 from storyquest.models.build import build_embedder, build_llm
@@ -46,6 +46,21 @@ class ChoiceBody(BaseModel):
 
 class AskBody(BaseModel):
     text: str = Field(max_length=2000)
+
+
+class AddBookBody(BaseModel):
+    gutenberg_id: int = Field(ge=1)
+    title: str = Field(min_length=1, max_length=200)
+    author: str = Field(min_length=1, max_length=200)
+    summary: str = Field(default="", max_length=2000)
+    content_notes: str = Field(default="", max_length=1000)
+    text: str = Field(max_length=admin.MAX_BOOK_CHARS)
+
+
+class ApproveBody(BaseModel):
+    chapter_idx: int | None = None
+    beat_idx: int | None = None
+    include_flagged: bool = False
 
 
 def _choose_mode(settings: Settings, embedder: Embedder | None) -> Mode:
@@ -157,6 +172,24 @@ def create_app(
         if state.llm is None:
             raise play.PlayError(503, "not_ready", "The story helper is resting. Try again later!")
         return {"job": library.prepare_chapter(content, settings, book_id, chapter_idx)}
+
+    @app.post("/api/admin/books", status_code=201)
+    def add_book(body: AddBookBody, content: sqlite3.Connection = Content) -> dict[str, Any]:
+        return admin.add_book(content, settings, **body.model_dump())
+
+    @app.get("/api/admin/books/{book_id}/review")
+    def review(book_id: int, content: sqlite3.Connection = Content) -> dict[str, Any]:
+        return admin.review_view(content, book_id)
+
+    @app.post("/api/admin/books/{book_id}/approve")
+    def approve(
+        book_id: int, body: ApproveBody, content: sqlite3.Connection = Content
+    ) -> dict[str, int]:
+        return admin.approve(content, book_id, **body.model_dump())
+
+    @app.post("/api/admin/books/{book_id}/publish")
+    def publish_book(book_id: int, content: sqlite3.Connection = Content) -> dict[str, Any]:
+        return admin.publish_book(content, book_id)
 
     @app.get("/api/missions")
     def missions(content: sqlite3.Connection = Content) -> list[dict[str, Any]]:

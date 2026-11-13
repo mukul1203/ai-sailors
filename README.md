@@ -82,13 +82,19 @@ books/
                    # optional: summary, content_notes, age_band, visibility, sha256
 ```
 
-Then `make dev-api` and open http://localhost:8000. The book appears as a folder (click "Look for
-new books" if the page was already open); open it to see its chapters. Choose **Prepare this
-story** on a chapter and the model builds it while you wait (a few minutes per chapter: the model
-serves one request at a time, and the line under the chapter shows the progress). When it says
-**Ready to play**, press Play. Locally, unreviewed chapters are playable; for children, set
-`PLAY_UNPUBLISHED=false` so only reviewed, published books show (`make review`, `make approve`,
-`make publish`).
+Then `make dev-api` and open http://localhost:8000. The page has three tabs (no sign-in yet; they
+are meant to be gated later):
+
+- **Books** (grown-ups): add a book with the form (Gutenberg number, title, author and the `.txt`
+  file; it is saved as a folder like the one above), or drop a folder in by hand. Each book is a
+  folder holding its chapters; choose **Prepare this story** (or **Prepare all**) and the model
+  builds them while you wait. The model serves one request at a time, so this takes a few minutes
+  per chapter; the line under the chapter shows progress.
+- **Review** (grown-ups): pick a book, read each part, the question and its answers, and the
+  warnings the checks raised. Approve parts one by one (parts with a warning only one by one), or
+  all parts without a warning. When every chapter is prepared and approved, **Publish this book**.
+- **Play** (children): the chapters a child may play. With `PLAY_UNPUBLISHED=false` that is only
+  published books; for local work `config.env` leaves it `true`, so prepared chapters show up too.
 
 A book with a Contents list is split into its chapters; one without is a single story. If a book
 cannot be read, the page says why and the other books still work. `BOOKS_DIR` in

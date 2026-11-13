@@ -11,6 +11,10 @@ The child's quest works end to end without accounts: `make dev-api` serves the A
 | `GET /api/health` | Whether the model is configured, and the mode used for questions |
 | `GET /api/library` | Every book found in `BOOKS_DIR` with its story chapters and the state of each: `playable`, `not_prepared`, `preparing` (with the latest progress line) or `failed` (with the reason). New folders are imported and read on the way |
 | `POST /api/library/{book_id}/chapters/{idx}/prepare` | Queue the model stages for one chapter (asking twice joins the same job); a worker thread in the API runs it |
+| `POST /api/admin/books` | Save an uploaded Gutenberg text (`gutenberg_id`, `title`, `author`, optional `summary`, `content_notes`, and the `text`) as a folder in the first `BOOKS_DIR` and register it; 409 if the number exists, 422 if it is not a Gutenberg text |
+| `GET /api/admin/books/{id}/review` | Every story chapter's parts with status, flags, question, cards and hints, plus what still blocks publishing |
+| `POST /api/admin/books/{id}/approve` | `{chapter_idx?, beat_idx?, include_flagged?}`: approve draft parts; flagged ones only when named or with `include_flagged` |
+| `POST /api/admin/books/{id}/publish` | Mark the book ready, or return the problems that stopped it |
 | `GET /api/missions` | Playable chapters: published books whose beats are all approved and chunked (with `PLAY_UNPUBLISHED=true`, any book whose beats have content) |
 | `POST /api/sessions` | Start a quest for `{book_id, chapter_idx}`; returns the first beat |
 | `GET /api/sessions/{id}` | The current beat (or the summary): resume after a reload |
