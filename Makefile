@@ -93,8 +93,7 @@ dev: _need-code ## Run the API (and the UI it serves) and the ingestion worker t
 
 # Serves the API and the child's web UI at http://localhost:$(API_PORT) (default 8000) and restarts
 # when code changes. Uses the model for children's questions (PLAY_MODE in config.env; M2S needs
-# `make embed`, otherwise it falls back to M1S). Books must be ingested and, unless
-# PLAY_UNPUBLISHED=true (the local default), published.
+# `make embed`, otherwise it falls back to M1S). Books must be ingested, reviewed and published.
 dev-api: _need-code ## Run the API and web UI with reload: http://localhost:8000
 	@$(ENV) $(BIN)/uvicorn storyquest.api.main:create_app --factory --reload --port "$${API_PORT:-8000}"
 

@@ -12,7 +12,9 @@ from storyquest.api.library import library, prepare_chapter  # noqa: E402
 from storyquest.api.main import create_app  # noqa: E402
 from storyquest.config import Settings  # noqa: E402
 from storyquest.ingestion.worker import run_worker  # noqa: E402
-from storyquest.stores.db import connect  # noqa: E402
+from storyquest.models.embedder import EmbeddingError, FakeEmbedder  # noqa: E402
+from storyquest.stores.db import connect, migrate, migrations_dir  # noqa: E402
+from storyquest.stores.vector import chunks_without_vectors  # noqa: E402
 
 pytestmark = pytest.mark.integration
 
@@ -66,7 +68,7 @@ def test_a_book_goes_from_prepared_to_reviewed_to_published_and_playable(
     tmp_path: Path,
 ) -> None:
     write_book(tmp_path / "books" / "9001-tiny-tales")
-    settings: Settings = make_settings(tmp_path, PLAY_UNPUBLISHED="false")
+    settings: Settings = make_settings(tmp_path)
     client = TestClient(create_app(settings, llm=StageLLM(every=3)))
     conn = connect(settings.data_dir / "content.db")
     library(conn, settings)
@@ -96,6 +98,7 @@ def test_a_book_goes_from_prepared_to_reviewed_to_published_and_playable(
     assert client.post(f"/api/admin/books/{TINY}/publish").json() == {
         "published": True,
         "problems": [],
+        "embedding_error": "",
     }
     assert client.get(f"/api/admin/books/{TINY}/review").json()["status"] == "ready"
     assert {m["chapter"] for m in client.get("/api/missions").json()} == {"The Fox", "The Owl"}
@@ -123,3 +126,48 @@ def test_flagged_beats_are_not_approved_in_bulk(tmp_path: Path) -> None:
 def test_an_unknown_book_gives_not_found(client: TestClient) -> None:
     assert client.get("/api/admin/books/12345/review").status_code == 404
     assert client.post("/api/admin/books/12345/publish").status_code == 404
+
+
+def prepared_book(tmp_path: Path) -> Settings:
+    write_book(tmp_path / "books" / "9001-tiny-tales")
+    settings = make_settings(tmp_path)
+    conn = connect(settings.data_dir / "content.db")
+    migrate(conn, migrations_dir("content"))
+    library(conn, settings)
+    for chapter in (0, 1):
+        prepare_chapter(conn, settings, TINY, chapter)
+    run_worker(conn, settings, StageLLM(every=3), once=True)
+    conn.close()
+    return settings
+
+
+def test_publishing_embeds_the_whole_book_once(tmp_path: Path) -> None:
+    settings = prepared_book(tmp_path)
+    embedder = FakeEmbedder()
+    client = TestClient(create_app(settings, llm=StageLLM(every=3), embedder=embedder))
+    client.post(f"/api/admin/books/{TINY}/approve", json={"include_flagged": True})
+    out = client.post(f"/api/admin/books/{TINY}/publish").json()
+    assert out["published"] and out["embedding_error"] == ""
+    conn = connect(settings.data_dir / "content.db")
+    assert not chunks_without_vectors(conn, TINY, embedder.model_id)
+    conn.close()
+
+
+def test_a_book_with_problems_is_not_embedded(tmp_path: Path) -> None:
+    settings = prepared_book(tmp_path)
+    embedder = FakeEmbedder()
+    client = TestClient(create_app(settings, llm=StageLLM(every=3), embedder=embedder))
+    assert client.post(f"/api/admin/books/{TINY}/publish").json()["published"] is False
+    assert embedder.calls == []
+
+
+def test_running_out_of_embedding_quota_still_publishes_the_book(tmp_path: Path) -> None:
+    class OutOfQuota(FakeEmbedder):
+        def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+            raise EmbeddingError("quota exceeded")
+
+    settings = prepared_book(tmp_path)
+    client = TestClient(create_app(settings, llm=StageLLM(every=3), embedder=OutOfQuota()))
+    client.post(f"/api/admin/books/{TINY}/approve", json={"include_flagged": True})
+    out = client.post(f"/api/admin/books/{TINY}/publish").json()
+    assert out["published"] and "quota exceeded" in out["embedding_error"]

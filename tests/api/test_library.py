@@ -50,7 +50,6 @@ def make_settings(tmp_path: Path, **env: str) -> Settings:
     base = {
         "DATA_DIR": str(tmp_path / "data"),
         "BOOKS_DIR": f"{tmp_path / 'books'},{tmp_path / 'more'}",
-        "PLAY_UNPUBLISHED": "true",
         "INGEST_IN_API": "false",
         "CHUNK_TARGET_CHARS": "1200",
         "LLM_PROVIDER": "fake",
@@ -129,7 +128,7 @@ def test_preparing_a_chapter_queues_a_job_once_and_the_worker_makes_it_playable(
 
     assert run_worker(conn, settings, StageLLM(every=3), once=True) == 1
     fox = chapters(library(conn, settings))["The Fox"]
-    assert fox["state"] == "playable" and fox["beats"] >= 2
+    assert fox["state"] == "prepared" and fox["beats"] >= 2
     assert chapters(library(conn, settings))["The Owl"]["state"] == "not_prepared"
     conn.close()
 
@@ -159,7 +158,7 @@ def test_a_failed_preparation_can_be_tried_again(settings: Settings) -> None:
 
     prepare_chapter(conn, settings, TINY, 0)  # "Try again"
     run_worker(conn, settings, StageLLM(every=3), once=True)
-    assert chapters(library(conn, settings))["The Fox"]["state"] == "playable"
+    assert chapters(library(conn, settings))["The Fox"]["state"] == "prepared"
     conn.close()
 
 
@@ -174,7 +173,7 @@ def test_preparing_something_that_is_not_a_chapter_is_refused(settings: Settings
     conn.close()
 
 
-def test_the_api_lists_prepares_and_plays_a_new_book(tmp_path: Path, settings: Settings) -> None:
+def test_the_api_lists_and_prepares_a_new_book(tmp_path: Path, settings: Settings) -> None:
     app = create_app(settings, llm=StageLLM(every=3))
     with TestClient(app) as client:
         books = client.get("/api/library").json()
@@ -185,9 +184,9 @@ def test_the_api_lists_prepares_and_plays_a_new_book(tmp_path: Path, settings: S
     run_worker(conn, settings, StageLLM(every=3), once=True)  # in case the thread did not finish
     conn.close()
     client = TestClient(create_app(settings, llm=StageLLM(every=3)))
-    assert chapters(client.get("/api/library").json())["The Fox"]["state"] == "playable"
-    view = client.post("/api/sessions", json={"book_id": TINY, "chapter_idx": 0}).json()
-    assert view["status"] == "active" and view["beat"]["narration"]
+    assert chapters(client.get("/api/library").json())["The Fox"]["state"] == "prepared"
+    refused = client.post("/api/sessions", json={"book_id": TINY, "chapter_idx": 0})
+    assert refused.status_code == 404  # prepared, but not published
 
 
 def test_the_background_worker_in_the_api_prepares_a_chapter(tmp_path: Path) -> None:
@@ -200,10 +199,10 @@ def test_the_background_worker_in_the_api_prepares_a_chapter(tmp_path: Path) -> 
         state = ""
         while time.time() < deadline:
             state = chapters(client.get("/api/library").json())["The Fox"]["state"]
-            if state == "playable":
+            if state == "prepared":
                 break
             time.sleep(0.3)
-        assert state == "playable"
+        assert state == "prepared"
 
 
 def test_preparing_needs_the_model(tmp_path: Path, settings: Settings) -> None:
@@ -212,34 +211,3 @@ def test_preparing_needs_the_model(tmp_path: Path, settings: Settings) -> None:
     client.get("/api/library")
     r = client.post(f"/api/library/{TINY}/chapters/0/prepare")
     assert r.status_code == 503 and r.json()["error"]["code"] == "not_ready"
-
-
-def test_preparing_a_chapter_also_embeds_its_chunks(settings: Settings) -> None:
-    from storyquest.models.embedder import FakeEmbedder
-    from storyquest.stores.vector import chunks_without_vectors
-
-    embedder = FakeEmbedder()
-    conn = connect(settings.data_dir / "content.db")
-    library(conn, settings)
-    prepare_chapter(conn, settings, TINY, 0)
-    run_worker(conn, settings, StageLLM(every=3), embedder=embedder, once=True)
-    assert embedder.calls and not chunks_without_vectors(conn, TINY, embedder.model_id)
-    conn.close()
-
-
-def test_running_out_of_embedding_quota_does_not_fail_the_chapter(settings: Settings) -> None:
-    from storyquest.models.embedder import EmbeddingError, FakeEmbedder
-
-    class OutOfQuota(FakeEmbedder):
-        def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
-            raise EmbeddingError("quota exceeded")
-
-    conn = connect(settings.data_dir / "content.db")
-    library(conn, settings)
-    prepare_chapter(conn, settings, TINY, 0)
-    run_worker(conn, settings, StageLLM(every=3), embedder=OutOfQuota(), once=True)
-    fox = chapters(library(conn, settings))["The Fox"]
-    assert fox["state"] == "playable"
-    job = conn.execute("SELECT status, message FROM ingestion_jobs").fetchone()
-    assert job["status"] == "done" and "quota exceeded" in job["message"]
-    conn.close()

@@ -52,7 +52,6 @@ class Settings:
     books_dirs: tuple[Path, ...]
     ingest_in_api: bool
     play_mode: str
-    play_unpublished: bool
     max_questions_per_session: int
     ask_min_interval_seconds: float
     api_debug: bool
@@ -110,7 +109,6 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         ),
         ingest_in_api=_flag(get("INGEST_IN_API", "true")),
         play_mode=get("PLAY_MODE", "M2S"),
-        play_unpublished=_flag(get("PLAY_UNPUBLISHED", "false")),
         max_questions_per_session=int(get("MAX_QUESTIONS_PER_SESSION", "10")),
         ask_min_interval_seconds=float(get("ASK_MIN_INTERVAL_SECONDS", "2")),
         api_debug=_flag(get("API_DEBUG", "false")),

@@ -55,7 +55,6 @@ The CA certificate is also kept out of git: put it at `certs/ca.crt` (git-ignore
 | `INGEST_RETRIES` | `2`; how often a beat that fails validation is asked again |
 | `RETRIEVAL_TOP_K` | `6`; passages given to the model per turn |
 | `PLAY_MODE` | `M2S`; the mode that answers a child's questions (a hybrid mode becomes its keyword twin without embeddings) |
-| `PLAY_UNPUBLISHED` | `true` locally (lists unpublished books and unapproved beats, for development and review), `false` in `config.prod.env` |
 | `MAX_QUESTIONS_PER_SESSION` / `ASK_MIN_INTERVAL_SECONDS` | `10` / `2`; a child's question limit per quest and the minimum gap between questions |
 | `API_DEBUG` | `false`; `true` adds route and flags to answers and enables `/api/docs` |
 | `RETRIEVAL_CANDIDATES` | `20`; candidates taken from each of keyword and meaning search before fusing |

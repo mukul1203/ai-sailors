@@ -52,8 +52,7 @@ make db-viewer                       # browse the databases at http://localhost:
 make dev-api                         # then open http://localhost:8000
 ```
 
-   Locally the page lists every chapter that has beats (`PLAY_UNPUBLISHED=true` in `config.env`).
-   Without that setting only published books with approved beats are listed. Without a model key
+   Only published books with approved beats are listed (see the Books and Review tabs below). Without a model key
    you can still click through the quest; the sidekick just says it is resting.
 
 7. Evaluate and read the report (opens in your browser, takes a while: the model endpoint handles
@@ -93,8 +92,8 @@ are meant to be gated later):
 - **Review** (grown-ups): pick a book, read each part, the question and its answers, and the
   warnings the checks raised. Approve parts one by one (parts with a warning only one by one), or
   all parts without a warning. When every chapter is prepared and approved, **Publish this book**.
-- **Play** (children): the chapters a child may play. With `PLAY_UNPUBLISHED=false` that is only
-  published books; for local work `config.env` leaves it `true`, so prepared chapters show up too.
+- **Play** (children): the chapters of published books. Publishing also computes the book's
+  embeddings once (if the quota runs out, the book is still published; `make embed` finishes it).
 
 A book with a Contents list is split into its chapters; one without is a single story. If a book
 cannot be read, the page says why and the other books still work. `BOOKS_DIR` in

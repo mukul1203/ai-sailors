@@ -13,8 +13,10 @@ import yaml
 from storyquest.api.play import PlayError
 from storyquest.catalog.importer import CatalogError, import_book
 from storyquest.config import Settings
+from storyquest.ingestion.embed import embed_book
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.review import approve_beats, publish, publish_problems
+from storyquest.models.embedder import Embedder
 from storyquest.stores.content_repo import ContentRepo
 
 MAX_BOOK_CHARS = 4_000_000
@@ -124,9 +126,16 @@ def approve(
     }
 
 
-def publish_book(content: sqlite3.Connection, book_id: int) -> dict[str, Any]:
+def publish_book(
+    content: sqlite3.Connection, book_id: int, embedder: Embedder | None = None
+) -> dict[str, Any]:
+    """Publish a fully approved book and, now that its chunks are final, embed them once. If the
+    embedding stops (the free quota), the book is still published and `embedding_error` says why."""
     try:
         problems = publish(content, book_id)
     except IngestionError as e:
         raise PlayError(404, "no_such_book", str(e)) from e
-    return {"published": not problems, "problems": problems}
+    out: dict[str, Any] = {"published": not problems, "problems": problems, "embedding_error": ""}
+    if not problems and embedder is not None:
+        out["embedding_error"] = embed_book(content, embedder, book_id).error
+    return out

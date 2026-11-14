@@ -11,7 +11,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
-from storyquest.api.play import PlayError, chapter_beats
+from storyquest.api.play import PlayError
 from storyquest.catalog.importer import scan_books
 from storyquest.config import Settings
 from storyquest.domain.book import Book, Chapter
@@ -20,7 +20,7 @@ from storyquest.ingestion.run import LLM_STAGES, RunOptions, run_ingestion
 from storyquest.ingestion.worker import options_to_json
 from storyquest.stores.content_repo import ContentRepo
 
-PLAYABLE, NOT_PREPARED, PREPARING, FAILED = "playable", "not_prepared", "preparing", "failed"
+PREPARED, NOT_PREPARED, PREPARING, FAILED = "prepared", "not_prepared", "preparing", "failed"
 
 
 @dataclass(frozen=True)
@@ -50,8 +50,8 @@ def _chapter_state(
     jobs: dict[int, sqlite3.Row],
 ) -> ChapterState:
     beats = repo.get_beats(book.id, chapter.idx)
-    if chapter_beats(repo, settings, book.id, chapter):
-        return ChapterState(chapter.idx, chapter.title, PLAYABLE, len(beats))
+    if beats and all(b.narration for b in beats):
+        return ChapterState(chapter.idx, chapter.title, PREPARED, len(beats))
     job = jobs.get(chapter.idx)
     if job is not None and job["status"] in ("queued", "running"):
         message = "Waiting for its turn..." if job["status"] == "queued" else job["message"]
@@ -73,8 +73,6 @@ def library(content: sqlite3.Connection, settings: Settings) -> list[dict[str, A
     repo = ContentRepo(content)
     out: list[dict[str, Any]] = []
     for book in repo.list_books():
-        if book.visibility != "listed" and not settings.play_unpublished:
-            continue
         entry: dict[str, Any] = {
             "id": book.id,
             "title": book.title,

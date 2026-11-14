@@ -15,7 +15,7 @@ The child's quest works end to end without accounts: `make dev-api` serves the A
 | `GET /api/admin/books/{id}/review` | Every story chapter's parts with status, flags, question, cards and hints, plus what still blocks publishing |
 | `POST /api/admin/books/{id}/approve` | `{chapter_idx?, beat_idx?, include_flagged?}`: approve draft parts; flagged ones only when named or with `include_flagged` |
 | `POST /api/admin/books/{id}/publish` | Mark the book ready, or return the problems that stopped it |
-| `GET /api/missions` | Playable chapters: published books whose beats are all approved and chunked (with `PLAY_UNPUBLISHED=true`, any book whose beats have content) |
+| `GET /api/missions` | Playable chapters: published books whose beats are all approved and chunked |
 | `POST /api/sessions` | Start a quest for `{book_id, chapter_idx}`; returns the first beat |
 | `GET /api/sessions/{id}` | The current beat (or the summary): resume after a reload |
 | `POST /api/sessions/{id}/choice` | `{card_id}`: the beat's question has one right card. Right: "Yes! <answer>." and the next beat. Wrong: a hint and another try (the card is greyed out); after 2 wrong tries the answer is shown and the quest goes on. A beat with no question has one "Yes, let's go!" card. No model call |

@@ -9,10 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from storyquest.config import Settings
-from storyquest.ingestion.embed import embed_book
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.run import RunOptions, run_ingestion
-from storyquest.models.embedder import Embedder
 from storyquest.models.llm import LLMClient, LLMError
 from storyquest.stores.content_repo import ContentRepo
 
@@ -44,7 +42,6 @@ def run_worker(
     settings: Settings,
     llm: LLMClient | None,
     *,
-    embedder: Embedder | None = None,
     once: bool = False,
     poll_seconds: float = 5.0,
     log: Log = lambda _: None,
@@ -75,12 +72,6 @@ def run_worker(
             log(f"job {job['id']} failed: {e}")
         else:
             summary = f"{len(report.ran)} steps run, {len(report.skipped)} skipped"
-            if embedder is not None and options.stages and not options.dry_run:
-                embedded = embed_book(conn, embedder, job["book_id"], progress)
-                if (
-                    embedded.error
-                ):  # a stop here (quota) does not undo the story: `make embed` resumes
-                    summary += f"; embeddings stopped: {embedded.error}"
             repo.finish_job(job["id"], "failed" if report.failed else "done", summary)
             log(f"job {job['id']} finished: {summary}, {len(report.failed)} failed")
         handled += 1

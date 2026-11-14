@@ -183,7 +183,7 @@ def _approve(args: argparse.Namespace) -> int:
 
 
 def _publish_book(args: argparse.Namespace) -> int:
-    _, conn = _open_content()
+    settings, conn = _open_content()
     problems = publish(conn, args.book)
     if problems:
         print("Not published:", file=sys.stderr)
@@ -191,6 +191,14 @@ def _publish_book(args: argparse.Namespace) -> int:
             print(f"  - {p}", file=sys.stderr)
         return 1
     print(f"Book {args.book} is published (status ready).")
+    if get_mode(settings.play_mode).hybrid:
+        try:
+            result = embed_book(conn, build_embedder(settings), args.book, print)
+        except EmbeddingError as e:
+            print(f"Not embedded ({e}); run `make embed BOOK={args.book}`.")
+        else:
+            if result.error:
+                print(f"Embedding stopped early; run `make embed BOOK={args.book}` to resume.")
     return 0
 
 
@@ -207,13 +215,7 @@ def _worker(args: argparse.Namespace) -> int:
     except LLMError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    embedder = None
-    if get_mode(settings.play_mode).hybrid:
-        try:
-            embedder = build_embedder(settings, use_cache=not args.no_cache)
-        except EmbeddingError as e:
-            print(f"note: no embeddings will be made ({e})")
-    handled = run_worker(conn, settings, llm, embedder=embedder, once=args.once, log=print)
+    handled = run_worker(conn, settings, llm, once=args.once, log=print)
     print(f"Handled {handled} job(s).")
     return 0
 

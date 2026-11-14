@@ -70,12 +70,10 @@ def _choose_mode(settings: Settings, embedder: Embedder | None) -> Mode:
     return mode
 
 
-def _work(
-    settings: Settings, llm: LLMClient, embedder: Embedder | None, stop: threading.Event
-) -> None:
+def _work(settings: Settings, llm: LLMClient, stop: threading.Event) -> None:
     conn = connect(settings.data_dir / "content.db")
     try:
-        run_worker(conn, settings, llm, embedder=embedder, poll_seconds=1.0, stop=stop)
+        run_worker(conn, settings, llm, poll_seconds=1.0, stop=stop)
     finally:
         conn.close()
 
@@ -114,10 +112,7 @@ def create_app(
         stop = threading.Event()
         if settings.ingest_in_api and state.llm is not None:
             threading.Thread(
-                target=_work,
-                args=(settings, state.llm, state.embedder, stop),
-                name="ingestion",
-                daemon=True,
+                target=_work, args=(settings, state.llm, stop), name="ingestion", daemon=True
             ).start()
         yield
         stop.set()
@@ -194,7 +189,7 @@ def create_app(
 
     @app.post("/api/admin/books/{book_id}/publish")
     def publish_book(book_id: int, content: sqlite3.Connection = Content) -> dict[str, Any]:
-        return admin.publish_book(content, book_id)
+        return admin.publish_book(content, book_id, state.embedder)
 
     @app.get("/api/missions")
     def missions(content: sqlite3.Connection = Content) -> list[dict[str, Any]]:
@@ -206,7 +201,7 @@ def create_app(
                 "chapter": m.chapter_title,
                 "beats": m.beats,
             }
-            for m in play.list_missions(content, settings)
+            for m in play.list_missions(content)
         ]
 
     @app.post("/api/sessions", status_code=201)

@@ -150,7 +150,7 @@ input {
 .chapter button { padding: 0.45rem 0.9rem; }
 .chapter button.secondary { background: #fff; color: var(--green-dark); border: 2px solid var(--green); }
 .chip-state { border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.85rem; background: #eee; }
-.chip-state.playable { background: #e0f4e8; }
+.chip-state.playable, .chip-state.prepared { background: #e0f4e8; }
 .chip-state.preparing { background: #fff1c7; }
 .chip-state.failed { background: #ffe3e0; }
 

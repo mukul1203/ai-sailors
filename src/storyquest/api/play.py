@@ -44,35 +44,25 @@ class Mission:
     beats: int
 
 
-def _playable(settings: Settings, beats: list[Beat], chunk_beats: set[int]) -> bool:
-    if not beats:
-        return False
-    if settings.play_unpublished:
-        return all(b.narration for b in beats)
-    return all(b.review_status == "approved" and b.narration for b in beats) and all(
-        b.idx in chunk_beats for b in beats
-    )
-
-
-def chapter_beats(
-    repo: ContentRepo, settings: Settings, book_id: int, chapter: Chapter
-) -> list[Beat] | None:
+def chapter_beats(repo: ContentRepo, book_id: int, chapter: Chapter) -> list[Beat] | None:
+    """The beats a child may play: every one written, approved and chunked."""
     beats = repo.get_beats(book_id, chapter.idx)
     chunk_beats = {c.beat_idx for c in repo.get_chunks(book_id, chapter.idx)}
-    return beats if chapter.included and _playable(settings, beats, chunk_beats) else None
+    ok = bool(beats) and all(
+        b.review_status == "approved" and b.narration and b.idx in chunk_beats for b in beats
+    )
+    return beats if chapter.included and ok else None
 
 
-def list_missions(content: sqlite3.Connection, settings: Settings) -> list[Mission]:
-    """Chapters a child can play: published books with every beat approved (or, in development
-    with `play_unpublished`, any book whose beats have content)."""
+def list_missions(content: sqlite3.Connection) -> list[Mission]:
+    """Chapters a child can play: published books whose beats are all approved."""
     repo = ContentRepo(content)
-    books = repo.list_books() if settings.play_unpublished else repo.list_books(status="ready")
     missions: list[Mission] = []
-    for book in books:
-        if book.visibility != "listed" and not settings.play_unpublished:
+    for book in repo.list_books(status="ready"):
+        if book.visibility != "listed":
             continue
         for chapter in repo.get_chapters(book.id):
-            beats = chapter_beats(repo, settings, book.id, chapter)
+            beats = chapter_beats(repo, book.id, chapter)
             if beats:
                 missions.append(
                     Mission(book.id, book.title, chapter.idx, chapter.title, len(beats))
@@ -99,8 +89,7 @@ def start_session(
     mode: str,
 ) -> str:
     if not any(
-        m.book_id == book_id and m.chapter_idx == chapter_idx
-        for m in list_missions(content, settings)
+        m.book_id == book_id and m.chapter_idx == chapter_idx for m in list_missions(content)
     ):
         raise PlayError(404, "no_such_mission", "That story is not ready to play yet.")
     session_id = secrets.token_urlsafe(16)

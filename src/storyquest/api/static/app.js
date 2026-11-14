@@ -91,6 +91,7 @@ function rememberOpen(id, isOpen) {
 
 const STATE_TEXT = {
   playable: "Ready to play",
+  prepared: "Prepared",
   not_prepared: "Not prepared yet",
   preparing: "Getting ready...",
   failed: "Could not prepare",
@@ -100,7 +101,8 @@ function chapterRow(book, chapter, grownUp) {
   const row = el("li", undefined, "chapter");
   const name = el("div", undefined, "name");
   name.append(el("span", chapter.title));
-  const detail = chapter.state === "playable" ? `${chapter.beats} parts` : chapter.message;
+  const counted = chapter.state === "playable" || chapter.state === "prepared";
+  const detail = counted ? `${chapter.beats} parts` : chapter.message;
   if (detail) name.append(el("small", detail));
   row.append(name);
   if (grownUp) row.append(el("span", STATE_TEXT[chapter.state], `chip-state ${chapter.state}`));
@@ -274,11 +276,11 @@ function publishBook(bookId) {
   return guarded(async () => {
     const out = await api(`/api/admin/books/${bookId}/publish`, { method: "POST" });
     await renderReview(bookId);
-    showNotice(
-      out.published
-        ? "Published! Children can now play it from the Play tab."
-        : `Not published yet: ${out.problems.join("; ")}`
-    );
+    let text = out.published
+      ? "Published! Children can now play it from the Play tab."
+      : `Not published yet: ${out.problems.join("; ")}`;
+    if (out.embedding_error) text += ` Embeddings stopped early (${out.embedding_error}); run make embed to finish them.`;
+    showNotice(text);
   });
 }
 

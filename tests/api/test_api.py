@@ -72,12 +72,6 @@ def test_only_published_books_have_missions(seeded: Settings) -> None:
     ]
 
 
-def test_development_setting_lists_unpublished_books(tmp_path: Path, seeded: Settings) -> None:
-    dev = make_settings(tmp_path, PLAY_UNPUBLISHED="true")
-    missions = TestClient(create_app(dev, llm=ScriptedLLM())).get("/api/missions").json()
-    assert [m["chapter_idx"] for m in missions] == [CHAPTER]
-
-
 ANSWERS = [
     "A tiny human baby",
     "To the Council Rock, to meet the Pack",

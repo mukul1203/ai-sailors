@@ -20,7 +20,7 @@ Scope: turning a catalog book's raw text into chapters, beats, entity cards and 
 | 6 | Generate beats | LLM, JSON-schema output, per beat: narration, clues, vocabulary, choice cards, spoiler reveals | `beats` rows (draft) | built |
 | 7 | Validate beats | Quotes must appear verbatim in the span; length and reading-level checks; safety screen | pass, flag or retry | built |
 | 8 | Entity cards | Extract characters and terms with aliases, a short child-friendly card and a `first_appears` position | `entities` rows | built |
-| 9 | Chunk and index | Paragraph-group chunks that never cross a beat boundary; BM25 index; vectors are added afterwards by `make embed`, and by the worker ("Prepare") after each job | `chunks`, FTS index | built |
+| 9 | Chunk and index | Paragraph-group chunks that never cross a beat boundary; BM25 index; vectors are added afterwards by `make embed`, and for the whole book when it is published | `chunks`, FTS index | built |
 | 10 | Review | A human approves beats for new books (flagged ones first) | beats `approved` | built (CLI) |
 | 11 | Publish | Mark the book `ready` | `books.status = ready` | built (CLI) |
 
@@ -62,7 +62,7 @@ Stage 1 to 4 and 9 need no model. Chapter 1 of the Jungle Book keeps its hand-wr
 - LLM calls are cached on disk by request hash, which also saves token quota on reruns.
 - A failed step (the model endpoint was down, say) is recorded as `failed`, the run continues with the next chapter, the book is marked `failed`, and the command exits non-zero.
 - `ingestion_jobs` is a simple queue: `--enqueue` adds a job and `make worker` runs queued jobs one at a time. Two workers on one database are not guarded against yet.
-- Chunking (stage 9) rebuilds all chunks and with them the embeddings, so run `make embed` afterwards (the worker does this itself; if the embedding quota runs out the chapter stays playable by keyword search and `make embed` resumes).
+- Chunking (stage 9) rebuilds all chunks and with them the embeddings, so run `make embed` afterwards (publishing a book does this for the whole book once; if the embedding quota runs out the book is still published and searches by keyword until `make embed` finishes).
 
 ## CLI
 
