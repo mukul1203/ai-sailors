@@ -117,6 +117,7 @@ input {
 }
 
 .toolbar { margin: 0 0 0.6rem; text-align: right; }
+.toolbar.left { text-align: left; }
 .toolbar .link { color: var(--green-dark); }
 
 .library { display: grid; gap: 0.8rem; }

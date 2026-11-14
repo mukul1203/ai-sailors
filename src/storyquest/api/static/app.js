@@ -465,6 +465,7 @@ $("ask-form").addEventListener("submit", (event) => {
 });
 
 $("again-btn").addEventListener("click", () => guarded(loadHome));
+$("stories-btn").addEventListener("click", () => guarded(loadHome));
 $("books-refresh").addEventListener("click", () => guarded(loadBooks));
 $("review-book").addEventListener("change", () =>
   guarded(async () => {
