@@ -3,6 +3,7 @@
 // All text from the server goes in through textContent, never innerHTML.
 const $ = (id) => document.getElementById(id);
 const SAVED = "storyquest.session";
+const QUESTS = "storyquest.quests";
 const OPEN = "storyquest.open";
 const POLL_MS = 3000;
 let busy = false;
@@ -369,10 +370,26 @@ async function renderReview(bookId) {
 
 async function startQuest(bookId, chapterIdx) {
   return guarded(async () => {
+    const key = `${bookId}:${chapterIdx}`;
+    const quests = JSON.parse(localStorage.getItem(QUESTS) || "{}");
+    if (quests[key]) {
+      try {
+        const view = await api(`/api/sessions/${quests[key]}`);
+        if (view.status === "active") {
+          localStorage.setItem(SAVED, view.id);
+          render(view);
+          return;
+        }
+      } catch (e) {
+        // the saved quest is gone: begin a new one
+      }
+    }
     const view = await api("/api/sessions", {
       method: "POST",
       body: { book_id: bookId, chapter_idx: chapterIdx },
     });
+    quests[key] = view.id;
+    localStorage.setItem(QUESTS, JSON.stringify(quests));
     localStorage.setItem(SAVED, view.id);
     render(view);
   });
