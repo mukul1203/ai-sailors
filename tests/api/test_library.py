@@ -212,3 +212,34 @@ def test_preparing_needs_the_model(tmp_path: Path, settings: Settings) -> None:
     client.get("/api/library")
     r = client.post(f"/api/library/{TINY}/chapters/0/prepare")
     assert r.status_code == 503 and r.json()["error"]["code"] == "not_ready"
+
+
+def test_preparing_a_chapter_also_embeds_its_chunks(settings: Settings) -> None:
+    from storyquest.models.embedder import FakeEmbedder
+    from storyquest.stores.vector import chunks_without_vectors
+
+    embedder = FakeEmbedder()
+    conn = connect(settings.data_dir / "content.db")
+    library(conn, settings)
+    prepare_chapter(conn, settings, TINY, 0)
+    run_worker(conn, settings, StageLLM(every=3), embedder=embedder, once=True)
+    assert embedder.calls and not chunks_without_vectors(conn, TINY, embedder.model_id)
+    conn.close()
+
+
+def test_running_out_of_embedding_quota_does_not_fail_the_chapter(settings: Settings) -> None:
+    from storyquest.models.embedder import EmbeddingError, FakeEmbedder
+
+    class OutOfQuota(FakeEmbedder):
+        def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+            raise EmbeddingError("quota exceeded")
+
+    conn = connect(settings.data_dir / "content.db")
+    library(conn, settings)
+    prepare_chapter(conn, settings, TINY, 0)
+    run_worker(conn, settings, StageLLM(every=3), embedder=OutOfQuota(), once=True)
+    fox = chapters(library(conn, settings))["The Fox"]
+    assert fox["state"] == "playable"
+    job = conn.execute("SELECT status, message FROM ingestion_jobs").fetchone()
+    assert job["status"] == "done" and "quota exceeded" in job["message"]
+    conn.close()

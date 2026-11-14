@@ -70,10 +70,12 @@ def _choose_mode(settings: Settings, embedder: Embedder | None) -> Mode:
     return mode
 
 
-def _work(settings: Settings, llm: LLMClient, stop: threading.Event) -> None:
+def _work(
+    settings: Settings, llm: LLMClient, embedder: Embedder | None, stop: threading.Event
+) -> None:
     conn = connect(settings.data_dir / "content.db")
     try:
-        run_worker(conn, settings, llm, poll_seconds=1.0, stop=stop)
+        run_worker(conn, settings, llm, embedder=embedder, poll_seconds=1.0, stop=stop)
     finally:
         conn.close()
 
@@ -112,7 +114,10 @@ def create_app(
         stop = threading.Event()
         if settings.ingest_in_api and state.llm is not None:
             threading.Thread(
-                target=_work, args=(settings, state.llm, stop), name="ingestion", daemon=True
+                target=_work,
+                args=(settings, state.llm, state.embedder, stop),
+                name="ingestion",
+                daemon=True,
             ).start()
         yield
         stop.set()
