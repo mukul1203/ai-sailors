@@ -14,8 +14,10 @@ from typing import Protocol
 import httpx
 
 BATCH_SIZE = 100  # texts per request
+OPENAI_BATCH_SIZE = 16  # the course's embedding endpoint accepts at most 16 texts per request
 RETRY_DELAYS = (2.0, 4.0, 8.0, 16.0)
 _RETRYABLE = (429, 503)
+_OPENAI_RETRYABLE = (429, 502, 503, 504)  # "capacity error": wait briefly and retry the batch
 _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
@@ -104,6 +106,90 @@ class GeminiEmbedder:
                 body: dict[str, list[dict[str, list[float]]]] = resp.json()
                 return body
             if resp.status_code in _RETRYABLE and delay is not None:
+                self._sleep(delay)
+                continue
+            raise EmbeddingError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        raise EmbeddingError("unreachable")
+
+
+class OpenAICompatibleEmbedder:
+    """An OpenAI-style `/embeddings` endpoint, such as the course's bge-small-en-v1.5 service.
+
+    The model has no query/document task type, so `query` is ignored here.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        dim: int,
+        ca_cert_path: Path | None,
+        *,
+        batch_size: int = OPENAI_BATCH_SIZE,
+        requests_per_minute: int = 30,
+        timeout: float = 60.0,
+        http: httpx.Client | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        retry_delays: tuple[float, ...] = RETRY_DELAYS,
+    ) -> None:
+        if batch_size < 1:
+            raise EmbeddingError(f"EMBEDDING_BATCH_SIZE must be at least 1, not {batch_size}")
+        self.model_id = f"{model}:{dim}"
+        self.dim = dim
+        self._model = model
+        self._url = f"{base_url.rstrip('/')}/embeddings"
+        self._headers = {"Authorization": f"Bearer {api_key}"}
+        self._batch_size = batch_size
+        self._sleep = sleep
+        self._delays = retry_delays
+        self._min_gap = 60.0 / requests_per_minute if requests_per_minute else 0.0
+        self._last = 0.0
+        if http is None:
+            cafile = str(ca_cert_path) if ca_cert_path else None
+            http = httpx.Client(verify=ssl.create_default_context(cafile=cafile), timeout=timeout)
+        self._http = http
+
+    def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+        out: list[list[float]] = []
+        for start in range(0, len(texts), self._batch_size):
+            out.extend(self._batch(texts[start : start + self._batch_size]))
+        return out
+
+    def _batch(self, texts: list[str]) -> list[list[float]]:
+        data = self._post({"model": self._model, "input": texts})
+        items = data.get("data")
+        if not isinstance(items, list) or len(items) != len(texts):
+            raise EmbeddingError("the embedding API returned an unexpected number of vectors")
+        try:
+            ordered = sorted(items, key=lambda item: int(item["index"]))
+            vectors = [[float(x) for x in item["embedding"]] for item in ordered]
+        except (KeyError, TypeError, ValueError) as e:
+            raise EmbeddingError(f"the embedding API returned an unexpected shape: {e}") from e
+        if [int(item["index"]) for item in ordered] != list(range(len(texts))):
+            raise EmbeddingError("the embedding API returned unexpected vector indexes")
+        if any(len(v) != self.dim for v in vectors):
+            raise EmbeddingError(
+                f"the embedding API returned an unexpected size of vectors (expected {self.dim})"
+            )
+        return [normalise(v) for v in vectors]
+
+    def _post(self, payload: Mapping[str, object]) -> dict[str, object]:
+        for delay in (*self._delays, None):
+            wait = self._min_gap - (time.monotonic() - self._last)
+            if wait > 0:
+                self._sleep(wait)
+            self._last = time.monotonic()
+            try:
+                resp = self._http.post(self._url, json=payload, headers=self._headers)
+            except httpx.HTTPError as e:
+                raise EmbeddingError(f"request failed: {type(e).__name__}: {e}") from e
+            if resp.status_code == 200:
+                body = resp.json()
+                if not isinstance(body, dict):
+                    raise EmbeddingError("the embedding API returned an unexpected shape")
+                return body
+            if resp.status_code in _OPENAI_RETRYABLE and delay is not None:
                 self._sleep(delay)
                 continue
             raise EmbeddingError(f"HTTP {resp.status_code}: {resp.text[:300]}")

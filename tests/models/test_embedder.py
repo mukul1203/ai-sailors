@@ -9,6 +9,7 @@ from storyquest.models.embedder import (
     EmbeddingError,
     FakeEmbedder,
     GeminiEmbedder,
+    OpenAICompatibleEmbedder,
     normalise,
 )
 
@@ -79,6 +80,107 @@ def test_gemini_rejects_vectors_of_the_wrong_size() -> None:
     embedder, _ = make(lambda request: answer(request, [1.0, 2.0, 3.0]))
     with pytest.raises(EmbeddingError, match="unexpected"):
         embedder.embed(["x"], query=True)
+
+
+def make_openai(handler, dim: int = 2, batch_size: int = 16):  # type: ignore[no-untyped-def]
+    sleeps: list[float] = []
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    embedder = OpenAICompatibleEmbedder(
+        "https://host:1035/v1/",
+        "KEY",
+        "bge-small-en-v1.5",
+        dim,
+        None,
+        batch_size=batch_size,
+        requests_per_minute=0,
+        http=http,
+        sleep=sleeps.append,
+    )
+    return embedder, sleeps
+
+
+def openai_answer(request: httpx.Request, values: list[float]) -> httpx.Response:
+    n = len(json.loads(request.content)["input"])
+    data = [{"object": "embedding", "index": i, "embedding": values} for i in range(n)]
+    return httpx.Response(200, json={"object": "list", "data": data})
+
+
+def test_openai_sends_model_and_texts_and_returns_unit_vectors() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return openai_answer(request, [3.0, 4.0])
+
+    embedder, _ = make_openai(handler)
+    assert embedder.embed(["a passage"], query=False) == [[0.6, 0.8]]
+    body = json.loads(seen[0].content)
+    assert body == {"model": "bge-small-en-v1.5", "input": ["a passage"]}
+    assert str(seen[0].url) == "https://host:1035/v1/embeddings"
+    assert seen[0].headers["Authorization"] == "Bearer KEY"
+    assert embedder.model_id == "bge-small-en-v1.5:2"
+
+
+def test_openai_sends_batches_of_at_most_16_and_keeps_the_order() -> None:
+    sizes: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sizes.append(len(json.loads(request.content)["input"]))
+        return openai_answer(request, [1.0, 0.0])
+
+    embedder, _ = make_openai(handler)
+    assert len(embedder.embed([f"t{i}" for i in range(40)], query=False)) == 40
+    assert sizes == [16, 16, 8]
+
+    # Answers out of order: the client must put them back by `index`.
+
+    order: list[str] = []
+
+    def echo(request: httpx.Request) -> httpx.Response:
+        texts = json.loads(request.content)["input"]
+        order.extend(texts)
+        data = [{"index": i, "embedding": [1.0, float(i)]} for i in range(len(texts))]
+        return httpx.Response(200, json={"data": list(reversed(data))})
+
+    small, _ = make_openai(echo, batch_size=3)
+    out = small.embed(["a", "b", "c"], query=False)
+    assert order == ["a", "b", "c"]
+    assert out == [normalise([1.0, 0.0]), normalise([1.0, 1.0]), normalise([1.0, 2.0])]
+
+
+def test_openai_retries_capacity_errors_then_gives_up_on_other_errors() -> None:
+    statuses = iter([429, 503, 200])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        status = next(statuses)
+        if status == 200:
+            return openai_answer(request, [1.0, 0.0])
+        return httpx.Response(status, json={})
+
+    embedder, sleeps = make_openai(handler)
+    assert embedder.embed(["x"], query=True) == [[1.0, 0.0]]
+    assert sleeps == [2.0, 4.0]
+
+    bad, _ = make_openai(lambda request: httpx.Response(401, text="bad key"))
+    with pytest.raises(EmbeddingError, match="HTTP 401"):
+        bad.embed(["x"], query=True)
+
+
+def test_openai_rejects_wrong_sizes_counts_and_shapes() -> None:
+    wrong_size, _ = make_openai(lambda request: openai_answer(request, [1.0, 2.0, 3.0]))
+    with pytest.raises(EmbeddingError, match="size"):
+        wrong_size.embed(["x"], query=False)
+
+    too_few, _ = make_openai(lambda request: httpx.Response(200, json={"data": []}))
+    with pytest.raises(EmbeddingError, match="number"):
+        too_few.embed(["x"], query=False)
+
+    no_vector, _ = make_openai(lambda request: httpx.Response(200, json={"data": [{"index": 0}]}))
+    with pytest.raises(EmbeddingError, match="shape"):
+        no_vector.embed(["x"], query=False)
+
+    with pytest.raises(EmbeddingError, match="BATCH_SIZE"):
+        make_openai(lambda request: openai_answer(request, [1.0, 0.0]), batch_size=0)
 
 
 def test_the_fake_embedder_puts_synonyms_in_the_same_place() -> None:
