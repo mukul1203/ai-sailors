@@ -64,6 +64,7 @@ def build_embedder(settings: Settings, *, use_cache: bool = True) -> Embedder:
             settings.embedding_dim,
             settings.embedding_ca_cert_path,
             batch_size=settings.embedding_batch_size,
+            max_chars=settings.embedding_max_chars,
             requests_per_minute=settings.embedding_requests_per_minute,
         )
     elif settings.embedding_provider == "gemini":

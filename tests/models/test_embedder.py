@@ -184,6 +184,23 @@ def test_openai_rejects_wrong_sizes_counts_and_shapes() -> None:
         make_openai(lambda request: openai_answer(request, [1.0, 0.0]), batch_size=0)
 
 
+def test_openai_cuts_long_texts_to_stay_under_the_token_limit() -> None:
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.extend(json.loads(request.content)["input"])
+        return openai_answer(request, [1.0, 0.0])
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    embedder = OpenAICompatibleEmbedder(
+        "https://h/v1", "K", "m", 2, None, max_chars=10, requests_per_minute=0, http=http
+    )
+    embedder.embed(["short", "a much longer paragraph"], query=False)
+    assert sent == ["short", "a much lon"]
+    with pytest.raises(EmbeddingError, match="MAX_CHARS"):
+        OpenAICompatibleEmbedder("https://h/v1", "K", "m", 2, None, max_chars=0, http=http)
+
+
 def test_the_query_prefix_goes_on_questions_only_and_is_cached_separately(
     tmp_path: Path,
 ) -> None:
