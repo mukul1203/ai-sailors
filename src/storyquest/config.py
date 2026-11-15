@@ -47,6 +47,9 @@ class Settings:
     embedding_model: str
     embedding_dim: int
     embedding_requests_per_minute: int
+    embedding_ca_cert_path: Path
+    embedding_batch_size: int
+    embedding_query_prefix: str
     generation_max_tokens: int
     max_child_input_chars: int
     books_dirs: tuple[Path, ...]
@@ -61,6 +64,8 @@ class Settings:
     llm_base_url: str = field(repr=False)
     llm_api_key: str = field(repr=False)
     embedding_api_key: str = field(repr=False)
+    embedding_base_url: str = field(repr=False)
+    gemini_api_key: str = field(repr=False)
     session_secret: str = field(repr=False)
 
 
@@ -102,6 +107,9 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         embedding_model=get("EMBEDDING_MODEL", "gemini-embedding-001"),
         embedding_dim=int(get("EMBEDDING_DIM", "768")),
         embedding_requests_per_minute=int(get("EMBEDDING_REQUESTS_PER_MINUTE", "30")),
+        embedding_ca_cert_path=path(get("EMBEDDING_CA_CERT_PATH", "certs/vm02-ca.crt")),
+        embedding_batch_size=int(get("EMBEDDING_BATCH_SIZE", "16")),
+        embedding_query_prefix=get("EMBEDDING_QUERY_PREFIX"),
         generation_max_tokens=int(get("GENERATION_MAX_TOKENS", "200")),
         max_child_input_chars=int(get("MAX_CHILD_INPUT_CHARS", "300")),
         books_dirs=tuple(
@@ -116,6 +124,11 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         api_port=int(get("API_PORT", "8000")),
         dbviewer_port=int(get("DBVIEWER_PORT", "8001")),
         llm_api_key=get("LLM_API_KEY"),
-        embedding_api_key=get("EMBEDDING_API_KEY") or get("GEMINI_API_KEY"),
+        embedding_api_key=get("EMBEDDING_API_KEY"),
+        embedding_base_url=get("EMBEDDING_BASE_URL"),
+        # Gemini reads GEMINI_API_KEY. The older EMBEDDING_API_KEY is accepted only while no
+        # EMBEDDING_BASE_URL is set, so a key meant for another endpoint is never sent to Google.
+        gemini_api_key=get("GEMINI_API_KEY")
+        or ("" if get("EMBEDDING_BASE_URL") else get("EMBEDDING_API_KEY")),
         session_secret=get("SESSION_SECRET"),
     )
