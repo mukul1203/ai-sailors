@@ -136,6 +136,20 @@ def _git_commit() -> str:
         return "unknown"
 
 
+def _git_dirty() -> bool | None:
+    """True when tracked files have uncommitted changes, so a result is not tied to the commit."""
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return bool(out.stdout.strip())
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
 def make_config(
     ctx: AgentContext, mode: Mode, split: str, golden_path: Path, rows: list[Row]
 ) -> Row:
@@ -150,7 +164,13 @@ def make_config(
         "golden_path": str(golden_path),
         "judged": False,
         "git_commit": _git_commit(),
+        "git_dirty": _git_dirty(),
         "retrieval_top_k": s.retrieval_top_k,
+        # Which vectors a hybrid run searched, so two embedding models can be told apart later.
+        "embedding_model": (
+            ctx.embedder.model_id if mode.hybrid and ctx.embedder is not None else None
+        ),
+        "embedding_query_prefix": s.embedding_query_prefix if mode.hybrid else None,
         "generation_max_tokens": s.generation_max_tokens,
         "items": len(rows),
         "started": datetime.now().isoformat(timespec="seconds"),

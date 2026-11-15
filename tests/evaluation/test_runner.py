@@ -45,6 +45,8 @@ def test_a_run_is_saved_and_can_be_reloaded_and_summarised(
 ) -> None:
     ctx, rows = run(make_ctx, eval_dir, "M1", ScriptedLLM(answer="He is lame in one foot."))
     config = make_config(ctx, get_mode("M1"), "dev", eval_dir / "golden_v1.jsonl", rows)
+    assert config["embedding_model"] is None  # a keyword-only mode searches no vectors
+    assert config["embedding_query_prefix"] is None and "git_dirty" in config
     summary = summarize(config, rows)
     run_dir = write_run(tmp_path / "runs", config, rows, summary)
     assert run_dir.name == "M1"
