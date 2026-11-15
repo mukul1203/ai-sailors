@@ -12,15 +12,18 @@ web page, no accounts yet). The parent and admin areas and deployment are not bu
 
 ## Quick start
 
-You need Python 3.11+ and `make`. You also need three things from the team: the model key and URL,
-the CA certificate, and (for hybrid search only) a free Gemini API key from Google AI Studio.
+You need Python 3.11+ and `make`. You also need from the team: the model key and URL with its CA
+certificate, and (for hybrid search only) the course's embedding key and URL with its own CA
+certificate.
 
 ```
 make setup        # creates .env, the virtual environment and installs everything
 ```
 
-1. Edit `.env` (git-ignored): `LLM_API_KEY`, `LLM_BASE_URL`, and optionally `EMBEDDING_API_KEY`.
-2. Put the certificate at `certs/ca.crt`.
+1. Edit `.env` (git-ignored): `LLM_API_KEY`, `LLM_BASE_URL`, and for hybrid search
+   `EMBEDDING_API_KEY` and `EMBEDDING_BASE_URL`.
+2. Put the model's certificate at `certs/ca.crt` and the embedding endpoint's at
+   `certs/vm02-ca.crt` (they are different files).
 3. Check it all:
 
 ```
@@ -123,7 +126,7 @@ rules the validation applies: [docs/design/02-ingestion-pipeline.md](docs/design
 
 The same agent code runs every mode; only the settings differ.
 
-| Mode | Retrieval | Evidence sentences | Needs `EMBEDDING_API_KEY` |
+| Mode | Retrieval | Evidence sentences | Needs the embedding endpoint |
 |---|---|---|---|
 | M0 | none (plain model) | no | no |
 | M1 | keyword (BM25) | no | no |
@@ -139,8 +142,23 @@ over the book sentences that hold the exact facts, so M3 and M3S are experimenta
 Hybrid modes need `make embed BOOK=<id>`
 once per book, and again after `make ingest` rebuilds the chunks (`make demo-data` does both).
 If the vectors are missing, hybrid modes fall back to keyword search and the turn carries the flag
-`no_vectors`. The free Gemini tier has a daily embedding quota: `make embed` stores each batch as
-it goes, earliest chapter first, and resumes where it stopped.
+`no_vectors`. `make embed` stores each batch as it goes, earliest chapter first, and resumes where
+it stopped.
+
+### Embedding models
+
+Vectors are stored per model, so switching models means `make embed BOOK=<id>` once for the new
+one (the old vectors stay and are used again if you switch back).
+
+| `EMBEDDING_PROVIDER` | Model | Dimensions | Keys in `.env` |
+|---|---|---|---|
+| `openai_compatible` (default) | the course endpoint's `bge-small-en-v1.5`, at most 16 texts per request | 384 | `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, certificate at `certs/vm02-ca.crt` |
+| `gemini` | `gemini-embedding-001` (free tier: per-minute and daily quotas) | 768 | `GEMINI_API_KEY` |
+
+To use Gemini, set the three model settings for one command, for example
+`EMBEDDING_PROVIDER=gemini EMBEDDING_MODEL=gemini-embedding-001 EMBEDDING_DIM=768 make eval`.
+`EMBEDDING_QUERY_PREFIX` puts an instruction in front of search questions only (BGE models are
+trained with one); leave it empty to turn it off.
 
 ## Configuration
 
@@ -158,7 +176,8 @@ it goes, earliest chapter first, and resumes where it stopped.
 | Symptom | Fix |
 |---|---|
 | `make doctor` says MISSING | add the value to `.env`, or the certificate to `certs/ca.crt` |
-| `make ask ... MODE=M2S` says it needs an embedder | set `EMBEDDING_API_KEY` in `.env`, then `make embed BOOK=236` |
+| `make ask ... MODE=M2S` says it needs an embedder | set `EMBEDDING_API_KEY` and `EMBEDDING_BASE_URL` in `.env` and the certificate at `certs/vm02-ca.crt`, then `make embed BOOK=236` |
+| Hybrid turns carry the flag `no_vectors` after switching embedding models | `make embed BOOK=236` once for the new model |
 | Hybrid results look stale after changing chunk size | `make ingest ...` then `make embed BOOK=236` (or `make demo-data`) |
 | Model calls are slow or time out | the endpoint serves one request at a time for the whole group; avoid parallel runs |
 | Want fresh model answers, not cached | add `--no-cache` to `ARGS` |

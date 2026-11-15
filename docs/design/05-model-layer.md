@@ -7,7 +7,7 @@ Scope: the boundary between the application and any model provider. Nothing outs
 | Interface | Methods | Current implementation |
 |---|---|---|
 | `LLMClient` | `chat(messages, schema=None, temperature, max_tokens, stream=False)` → text or validated JSON, with token usage | Hosted `Qwen/Qwen3-8B` (vLLM, OpenAI-compatible chat endpoint); also a `fake` provider for tests and offline work |
-| `Embedder` | `embed(texts, query=)` → unit vectors, `model_id`, `dim` | `gemini` (the Gemini embedding API, `gemini-embedding-001`, 768 dimensions), `fake` (tests); wrapped by a disk cache. The team endpoint has none: its `/embeddings` returns 404 "not available in this pilot" |
+| `Embedder` | `embed(texts, query=)` → unit vectors, `model_id`, `dim` | `openai_compatible` (default: the course's separate embedding endpoint, `bge-small-en-v1.5`, 384 dimensions, at most 16 texts per request, its own CA certificate), `gemini` (the Gemini embedding API, `gemini-embedding-001`, 768 dimensions), `fake` (tests); wrapped by a disk cache, and optionally by a query prefix. The chat endpoint's own `/embeddings` returns 404 "not available in this pilot" |
 | `Reranker` | `rerank(query, passages)` → ordered ids with scores | LLM-based listwise rerank using `LLMClient` |
 
 Implementations are chosen in config. Adding a provider means adding one class.
@@ -22,7 +22,7 @@ Implementations are chosen in config. Adding a provider means adding one class.
 | Output tokens | 512 default, 1,024 max | Always set `max_tokens` explicitly |
 | Errors | 429 and 503 are transient; 400 means a bad request | Retry 429 and 503 with delays of 2, 4 and 8 seconds, then give up and report; never retry 400 |
 
-Embeddings are not provided on these endpoints, so the embedder is a separate service (the Gemini API, key in `.env` as `EMBEDDING_API_KEY`). Google's free tier may use submitted content to improve its products: acceptable for development and evaluation, and to be revisited (paid tier or a local model) before real children use the app. The API supports chat, streaming and tool-call responses; the application does the tool execution, retrieval and conversation history.
+Embeddings are not provided on the chat endpoint. The course provides a separate embedding endpoint (from 13 Nov 2026): OpenAI-style `POST /v1/embeddings` serving `bge-small-en-v1.5`, 384-dimension vectors, at most 16 texts per request and 512 model tokens per text, with its own CA certificate (`certs/vm02-ca.crt`). Its URL and key go in `.env` as `EMBEDDING_BASE_URL` and `EMBEDDING_API_KEY`. The model has no query/document task type; BGE recommends an instruction in front of short search questions, set with `EMBEDDING_QUERY_PREFIX` (applied to queries only, outside the cache so prefixed and plain queries are cached apart). Before it arrived the team used the Gemini API (`EMBEDDING_PROVIDER=gemini`, key in `.env` as `GEMINI_API_KEY`), which is kept for comparison; Google's free tier may use submitted content to improve its products, so it is for development and evaluation only. A key is never sent to Google when an `EMBEDDING_BASE_URL` is set unless it is named `GEMINI_API_KEY`. The API supports chat, streaming and tool-call responses; the application does the tool execution, retrieval and conversation history.
 
 Priorities when requests contend: live child turns first, then eval runs, then ingestion. Because the key is shared with all developers, two processes can still collide; a 429 is then retried, and the disk cache keeps repeated calls off the endpoint; the `fake` provider is available for tests.
 
@@ -51,7 +51,13 @@ llm:
   ca_cert_path: /certs/ca.crt       # git-ignored file; keep TLS verification on
   max_concurrency: 1
 embedder:
-  provider: none        # later: local or hosted
+  provider: openai_compatible       # or: gemini, fake
+  base_url_env: EMBEDDING_BASE_URL  # secret, read from .env
+  model: bge-small-en-v1.5
+  dim: 384
+  batch_size: 16
+  ca_cert_path: certs/vm02-ca.crt
+  query_prefix: ""                  # e.g. "Represent this sentence for searching relevant passages:"
 reranker:
   provider: llm_listwise
 ```
@@ -59,4 +65,4 @@ reranker:
 ## Open questions
 
 - Does the deployed app get its own key, or share the group key with developers?
-- Production embeddings: paid Gemini tier, or a small local CPU model, instead of the free tier?
+- Is the course embedding endpoint available to the deployed server, and with what rate limits?
