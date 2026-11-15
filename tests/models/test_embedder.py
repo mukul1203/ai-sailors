@@ -10,6 +10,7 @@ from storyquest.models.embedder import (
     FakeEmbedder,
     GeminiEmbedder,
     OpenAICompatibleEmbedder,
+    QueryPrefixEmbedder,
     normalise,
 )
 
@@ -181,6 +182,21 @@ def test_openai_rejects_wrong_sizes_counts_and_shapes() -> None:
 
     with pytest.raises(EmbeddingError, match="BATCH_SIZE"):
         make_openai(lambda request: openai_answer(request, [1.0, 0.0]), batch_size=0)
+
+
+def test_the_query_prefix_goes_on_questions_only_and_is_cached_separately(
+    tmp_path: Path,
+) -> None:
+    inner = FakeEmbedder()
+    prefixed = QueryPrefixEmbedder(CachedEmbedder(inner, tmp_path), "Represent this: ")
+    prefixed.embed(["who is akela"], query=True)
+    prefixed.embed(["a passage"], query=False)
+    assert inner.calls == [(["Represent this: who is akela"], True), (["a passage"], False)]
+
+    plain = CachedEmbedder(inner, tmp_path)
+    plain.embed(["who is akela"], query=True)
+    assert inner.calls[-1] == (["who is akela"], True)  # no prefix: not served from that cache
+    assert prefixed.model_id == inner.model_id and prefixed.dim == inner.dim
 
 
 def test_the_fake_embedder_puts_synonyms_in_the_same_place() -> None:

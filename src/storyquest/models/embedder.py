@@ -115,7 +115,8 @@ class GeminiEmbedder:
 class OpenAICompatibleEmbedder:
     """An OpenAI-style `/embeddings` endpoint, such as the course's bge-small-en-v1.5 service.
 
-    The model has no query/document task type, so `query` is ignored here.
+    The model has no query/document task type, so `query` is ignored here; a query prefix, if
+    wanted, is added by `QueryPrefixEmbedder` around the cache.
     """
 
     def __init__(
@@ -194,6 +195,25 @@ class OpenAICompatibleEmbedder:
                 continue
             raise EmbeddingError(f"HTTP {resp.status_code}: {resp.text[:300]}")
         raise EmbeddingError("unreachable")
+
+
+class QueryPrefixEmbedder:
+    """Adds an instruction in front of search questions only (documents are left as they are).
+
+    BGE models are trained to match "<instruction> <question>" against plain passages. It wraps
+    the cache, so a prefixed question is cached under its prefixed text.
+    """
+
+    def __init__(self, inner: Embedder, prefix: str) -> None:
+        self._inner = inner
+        self._prefix = prefix.strip()
+        self.model_id = inner.model_id
+        self.dim = inner.dim
+
+    def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+        if query and self._prefix:
+            texts = [f"{self._prefix} {t}" for t in texts]
+        return self._inner.embed(texts, query=query)
 
 
 class FakeEmbedder:
