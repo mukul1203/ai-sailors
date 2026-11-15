@@ -67,6 +67,14 @@ make eval MODES="M1 M1S M2 M2S"      # compare keyword and hybrid retrieval
 make eval ARGS="--category SPO --limit 5"   # a quick subset
 ```
 
+   To check the search alone, in seconds and with no model calls (recall@k of keyword, meaning
+   and hybrid search against the golden set's gold passages), use `make eval-retrieval`:
+
+```
+make eval-retrieval                  # dev split, k = 3, 6, 8 and 10
+make eval-retrieval ARGS="--k 6"     # only the agent's own top-k
+```
+
 Everything has a `make` target; `make help` lists them all, and each target has a comment in the
 [Makefile](Makefile) explaining what it does.
 

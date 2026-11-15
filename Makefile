@@ -44,7 +44,7 @@ ENV := set -a; \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
-        eval eval-report \
+        eval eval-retrieval eval-report \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -297,6 +297,13 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 # browser, ARGS="--category SPO --limit 5" for a subset.
 eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1S M2S"] [SPLIT=dev] [ARGS="..."]
 	@$(ENV) $(BIN)/storyquest eval run --modes "$(MODES)" --split $(SPLIT) $(ARGS)
+
+# Retrieval on its own, in seconds and with no chat-model calls: for each golden question with a
+# gold passage, does keyword, meaning or hybrid search put it in the top k? Uses the configured
+# embedding model (run `make embed` for it first). Use it for chunking and embedding experiments,
+# e.g. `EMBEDDING_CONTEXT_CHARS=1200 make eval-retrieval` after embedding with the same setting.
+eval-retrieval: _need-code ## Recall@k of keyword/meaning/hybrid search: make eval-retrieval [SPLIT=dev] [ARGS="--k 3,6,10"]
+	@$(ENV) $(BIN)/storyquest eval retrieval --split $(SPLIT) $(ARGS)
 
 # Rebuilds report.html from a saved folder under eval/runs/ and opens it again, without any
 # model calls. Useful after the report layout changes or to look at an old run.

@@ -21,6 +21,7 @@ from storyquest.domain.position import Position
 from storyquest.evaluation.html_report import render_report
 from storyquest.evaluation.items import GoldItem, load_items
 from storyquest.evaluation.report import summarize
+from storyquest.evaluation.retrieval import render_recall, retrieval_recall
 from storyquest.evaluation.runner import (
     judge_rows,
     load_batch,
@@ -39,6 +40,7 @@ from storyquest.ingestion.status import render_entities, render_status
 from storyquest.ingestion.worker import options_to_json, run_worker
 from storyquest.models.build import build_embedder, build_llm
 from storyquest.models.embedder import Embedder, EmbeddingError
+from storyquest.models.fake import FakeClient
 from storyquest.models.llm import LLMError, Message
 from storyquest.stores.content_repo import ContentRepo
 from storyquest.stores.db import connect, migrate, migrations_dir
@@ -358,6 +360,37 @@ def _eval_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _eval_retrieval(args: argparse.Namespace) -> int:
+    """Recall@k of keyword, meaning and hybrid search on the golden set; no chat-model calls."""
+    settings, conn = _open_content()
+    golden = Path(args.golden) if args.golden else settings.root / "eval" / "golden_v1.jsonl"
+    items = _select_items(args, load_items(golden))
+    if args.split in ("test", "all"):
+        print("note: the test split is for reporting; do not tune against it")
+    try:
+        ks = [int(k) for k in re.split(r"[,\s]+", args.k) if k]
+        if not ks or min(ks) < 1:
+            raise ValueError("--k needs positive numbers, e.g. 3,6,10")
+        try:
+            embedder: Embedder | None = build_embedder(settings, use_cache=not args.no_cache)
+        except EmbeddingError as e:
+            print(f"note: keyword search only ({e})")
+            embedder = None
+        # Retrieval needs no chat model: the fake one is never called.
+        ctx = load_context(conn, FakeClient(), settings, args.book, embedder)
+        rows = retrieval_recall(ctx, load_cleaned(settings.data_dir, ctx.book), items, ks)
+    except (AgentError, EmbeddingError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    if not rows:
+        print("error: no questions with gold passages match those filters", file=sys.stderr)
+        return 1
+    embedding = embedder.model_id if embedder is not None else None
+    print(f"split {args.split}")
+    print(render_recall(rows, top_k=settings.retrieval_top_k, embedding=embedding))
+    return 0
+
+
 def _eval_report(args: argparse.Namespace) -> int:
     folder = Path(args.folder)
     try:
@@ -482,6 +515,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--no-cache", action="store_true")
     run.add_argument("--no-judge", action="store_true", help="skip the LLM judge (faster)")
     run.add_argument("--no-open", action="store_true", help="do not open the report")
+    ret = ev.add_parser(
+        "retrieval", help="Recall@k of keyword, meaning and hybrid search (no chat-model calls)"
+    )
+    ret.add_argument("--k", default="3,6,8,10", help="cut-offs to report, e.g. '3,6,10'")
+    ret.add_argument("--split", default="dev", choices=["dev", "test", "all"])
+    ret.add_argument("--category", help="only this category, e.g. CAN")
+    ret.add_argument("--ids", help="comma-separated item ids")
+    ret.add_argument("--limit", type=int, help="only the first N matching items")
+    ret.add_argument("--book", type=int, default=236)
+    ret.add_argument("--golden", help="path to a golden-set file")
+    ret.add_argument("--no-cache", action="store_true")
     rep = ev.add_parser("report", help="Rebuild and open the report for a saved run folder")
     rep.add_argument("folder")
     rep.add_argument("--no-open", action="store_true")
@@ -528,5 +572,6 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "ask":
         return _ask(args)
     if args.command == "eval":
-        return {"run": _eval_run, "report": _eval_report}[args.eval_command](args)
+        commands = {"run": _eval_run, "retrieval": _eval_retrieval, "report": _eval_report}
+        return commands[args.eval_command](args)
     return 2
