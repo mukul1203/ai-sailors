@@ -23,7 +23,9 @@ make setup        # creates .env, the virtual environment and installs everythin
 1. Edit `.env` (git-ignored): `LLM_API_KEY`, `LLM_BASE_URL`, and for hybrid search
    `EMBEDDING_API_KEY` and `EMBEDDING_BASE_URL`.
 2. Put the model's certificate at `certs/ca.crt` and the embedding endpoint's at
-   `certs/vm02-ca.crt` (they are different files).
+   `certs/vm02-ca.crt` (they are different files). upGrad ships the model's certificate as
+   `vm06-ca.crt` (the chat server is VM06): save it as `certs/ca.crt`. The embedding one comes
+   as `vm02-ca.crt` (VM02) and keeps its name.
 3. Check it all:
 
 ```
