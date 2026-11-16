@@ -22,9 +22,18 @@ def summarize(config: Row, rows: list[Row]) -> str:
     passed = sum(bool(r["passed"]) for r in ran)
     out = [
         f"Run {config['mode']} | split {config['split']} | {len(ran)} run, {len(skipped)} skipped"
-        f" | model {config['model']} | commit {config['git_commit']}",
+        f" | model {config['model']} | commit {config['git_commit']}"
+        f"{' (uncommitted changes)' if config.get('git_dirty') else ''}",
         f"golden set {config['golden_sha256']} | book {config['book']} ({config['book_sha256']})"
         f" | top-k {config['retrieval_top_k']}",
+    ]
+    if config.get("embedding_model"):
+        prefix = config.get("embedding_query_prefix")
+        out.append(
+            f"embeddings {config['embedding_model']}"
+            + (f' | query prefix "{prefix}"' if prefix else " | no query prefix")
+        )
+    out += [
         "",
         f"Pass rate: {_pct(passed, len(ran))}",
     ]

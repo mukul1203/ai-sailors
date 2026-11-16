@@ -44,7 +44,7 @@ ENV := set -a; \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
-        eval eval-report \
+        eval eval-retrieval eval-report \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -73,7 +73,13 @@ doctor: ## Check tools, secrets, CA certificate and config
 	  [ -n "$$LLM_API_KEY" ] && echo "ok       LLM_API_KEY is set" || echo "MISSING  LLM_API_KEY (put it in .env)"; \
 	  [ -n "$$LLM_BASE_URL" ] && echo "ok       LLM_BASE_URL is set" || echo "MISSING  LLM_BASE_URL (put it in .env)"; \
 	  [ -f "$$LLM_CA_CERT_PATH" ] && echo "ok       CA certificate at $$LLM_CA_CERT_PATH" || echo "MISSING  CA certificate at $$LLM_CA_CERT_PATH"; \
-	  [ -n "$${EMBEDDING_API_KEY:-$$GEMINI_API_KEY}" ] && echo "ok       EMBEDDING_API_KEY is set" || echo "missing  EMBEDDING_API_KEY (only needed for hybrid modes M2 and M2S)"; \
+	  if [ "$$EMBEDDING_PROVIDER" = gemini ]; then \
+	    [ -n "$$GEMINI_API_KEY" ] && echo "ok       GEMINI_API_KEY is set" || echo "missing  GEMINI_API_KEY (only needed for hybrid modes M2 and M2S)"; \
+	  else \
+	    [ -n "$$EMBEDDING_API_KEY" ] && [ -n "$$EMBEDDING_BASE_URL" ] && echo "ok       EMBEDDING_API_KEY and EMBEDDING_BASE_URL are set" || echo "missing  EMBEDDING_API_KEY or EMBEDDING_BASE_URL (only needed for hybrid modes M2 and M2S)"; \
+	    [ -f "$$EMBEDDING_CA_CERT_PATH" ] && echo "ok       embedding CA certificate at $$EMBEDDING_CA_CERT_PATH" || echo "missing  embedding CA certificate at $$EMBEDDING_CA_CERT_PATH (only needed for M2 and M2S)"; \
+	  fi; \
+	  echo "config   embeddings: $$EMBEDDING_PROVIDER $$EMBEDDING_MODEL ($$EMBEDDING_DIM dimensions)"; \
 	  echo "config   $$LLM_PROVIDER $$LLM_MODEL"
 
 # One tiny curl request straight to the model endpoint with your key, URL and certificate, so it
@@ -168,12 +174,13 @@ seed: _need-code ## Import the fixture books (Jungle Book) into the local databa
 
 # Everything needed to play with the Jungle Book in one go: seed, ingest (with the hand-written
 # beats) and embed. Safe to re-run. The embed step is skipped, with a note, if there is no
-# EMBEDDING_API_KEY; modes M0, M1 and M1S work without it.
+# embedding key (EMBEDDING_API_KEY, or GEMINI_API_KEY for Gemini); modes M0, M1 and M1S work
+# without it.
 demo-data: _need-code ## Load the Jungle Book ready to play: seed, ingest with beats, embed
 	@$(MAKE) --no-print-directory seed
 	@$(MAKE) --no-print-directory ingest BOOK=236 ARGS="--spine eval/spine_mowgli_brothers.json"
-	@$(ENV) if [ -n "$${EMBEDDING_API_KEY:-$$GEMINI_API_KEY}" ]; then $(MAKE) --no-print-directory embed BOOK=236; \
-	  else echo "skipped embed: no EMBEDDING_API_KEY in .env (needed only for modes M2 and M2S)"; fi
+	@$(ENV) if [ -n "$$EMBEDDING_API_KEY$$GEMINI_API_KEY" ]; then $(MAKE) --no-print-directory embed BOOK=236; \
+	  else echo "skipped embed: no EMBEDDING_API_KEY (or GEMINI_API_KEY) in .env (needed only for modes M2 and M2S)"; fi
 
 # Admin area login. Not built yet.
 admin-user: _need-code ## Create an admin user (prompts for details)
@@ -226,9 +233,10 @@ entities: _need-code _need-book ## List entity cards: make entities BOOK=<id>
 worker: _need-code ## Run queued ingestion jobs: make worker [ARGS="--once"]
 	@$(ENV) $(BIN)/storyquest worker $(ARGS)
 
-# Computes a meaning vector (embedding) for every chunk that lacks one, with the Gemini API, and
-# stores it in content.db (table chunk_embeddings). Needed once per book, and again after `make
-# ingest` rebuilds chunks, before using hybrid mode M2 or M2S. Needs EMBEDDING_API_KEY in .env.
+# Computes a meaning vector (embedding) for every chunk that lacks one with the configured
+# embedding model (EMBEDDING_PROVIDER in config.env), and stores it in content.db (table
+# chunk_embeddings, one set per model). Needed once per book and model, and again after `make
+# ingest` rebuilds chunks, before using hybrid mode M2 or M2S. Needs the embedding key in .env.
 embed: _need-code _need-book ## Embed a book's chunks for hybrid search: make embed BOOK=<id>
 	@$(ENV) $(BIN)/storyquest embed $(BOOK) $(ARGS)
 
@@ -289,6 +297,13 @@ db-reset: ## DELETE the local databases (asks first); books and LLM cache are ke
 # browser, ARGS="--category SPO --limit 5" for a subset.
 eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1S M2S"] [SPLIT=dev] [ARGS="..."]
 	@$(ENV) $(BIN)/storyquest eval run --modes "$(MODES)" --split $(SPLIT) $(ARGS)
+
+# Retrieval on its own, in seconds and with no chat-model calls: for each golden question with a
+# gold passage, does keyword, meaning or hybrid search put it in the top k? Uses the configured
+# embedding model (run `make embed` for it first). Use it for chunking and embedding experiments,
+# e.g. `EMBEDDING_CONTEXT_CHARS=1200 make eval-retrieval` after embedding with the same setting.
+eval-retrieval: _need-code ## Recall@k of keyword/meaning/hybrid search: make eval-retrieval [SPLIT=dev] [ARGS="--k 3,6,10"]
+	@$(ENV) $(BIN)/storyquest eval retrieval --split $(SPLIT) $(ARGS)
 
 # Rebuilds report.html from a saved folder under eval/runs/ and opens it again, without any
 # model calls. Useful after the report layout changes or to look at an old run.

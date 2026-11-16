@@ -39,6 +39,16 @@ def chunks_without_vectors(
     return [(int(r[0]), str(r[1])) for r in rows]
 
 
+def book_chunks(conn: sqlite3.Connection, book_id: int) -> list[tuple[int, int, int, str]]:
+    """(chunk id, chapter, beat, text) of every chunk of the book, in reading order."""
+    rows = conn.execute(
+        "SELECT id, chapter_idx, beat_idx, text FROM chunks WHERE book_id = ?"
+        " ORDER BY chapter_idx, beat_idx, idx",
+        (book_id,),
+    )
+    return [(int(r[0]), int(r[1]), int(r[2]), str(r[3])) for r in rows]
+
+
 def store_vectors(
     conn: sqlite3.Connection, model_id: str, dim: int, rows: list[tuple[int, list[float]]]
 ) -> None:

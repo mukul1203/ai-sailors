@@ -14,8 +14,14 @@ from typing import Protocol
 import httpx
 
 BATCH_SIZE = 100  # texts per request
+OPENAI_BATCH_SIZE = 16  # the course's embedding endpoint accepts at most 16 texts per request
+# Its model takes at most 512 tokens per text. Measured on the Jungle Book, long passages run
+# about 4.2 characters a token (1,522 characters = 347 tokens; 2,400 characters = 579 tokens,
+# refused), so 1,600 characters (about 385 tokens) leaves a safe margin.
+OPENAI_MAX_CHARS = 1600
 RETRY_DELAYS = (2.0, 4.0, 8.0, 16.0)
 _RETRYABLE = (429, 503)
+_OPENAI_RETRYABLE = (429, 502, 503, 504)  # "capacity error": wait briefly and retry the batch
 _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
@@ -26,6 +32,9 @@ class EmbeddingError(Exception):
 class Embedder(Protocol):
     model_id: str
     dim: int
+    # Characters of surrounding scene text embedded with each chunk (0 = the chunk alone). The
+    # search still returns the chunk itself; only its vector carries the extra context.
+    context_chars: int
 
     def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
         """One unit-length vector per text. `query` marks a search question, not a document."""
@@ -54,6 +63,7 @@ class GeminiEmbedder:
     ) -> None:
         self.model_id = f"{model}:{dim}"
         self.dim = dim
+        self.context_chars = 0
         self._model = model
         self._url = f"{_ENDPOINT}/{model}:batchEmbedContents"
         self._headers = {"x-goog-api-key": api_key}
@@ -110,12 +120,147 @@ class GeminiEmbedder:
         raise EmbeddingError("unreachable")
 
 
+class OpenAICompatibleEmbedder:
+    """An OpenAI-style `/embeddings` endpoint, such as the course's bge-small-en-v1.5 service.
+
+    The model has no query/document task type, so `query` is ignored here; a query prefix, if
+    wanted, is added by `QueryPrefixEmbedder` around the cache.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        dim: int,
+        ca_cert_path: Path | None,
+        *,
+        batch_size: int = OPENAI_BATCH_SIZE,
+        max_chars: int = OPENAI_MAX_CHARS,
+        requests_per_minute: int = 30,
+        timeout: float = 60.0,
+        http: httpx.Client | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        retry_delays: tuple[float, ...] = RETRY_DELAYS,
+    ) -> None:
+        if batch_size < 1:
+            raise EmbeddingError(f"EMBEDDING_BATCH_SIZE must be at least 1, not {batch_size}")
+        if max_chars < 1:
+            raise EmbeddingError(f"EMBEDDING_MAX_CHARS must be at least 1, not {max_chars}")
+        self.model_id = f"{model}:{dim}"
+        self.dim = dim
+        self.context_chars = 0
+        self._model = model
+        self._url = f"{base_url.rstrip('/')}/embeddings"
+        self._headers = {"Authorization": f"Bearer {api_key}"}
+        self._batch_size = batch_size
+        self._max_chars = max_chars
+        self._sleep = sleep
+        self._delays = retry_delays
+        self._min_gap = 60.0 / requests_per_minute if requests_per_minute else 0.0
+        self._last = 0.0
+        if http is None:
+            cafile = str(ca_cert_path) if ca_cert_path else None
+            http = httpx.Client(verify=ssl.create_default_context(cafile=cafile), timeout=timeout)
+        self._http = http
+
+    def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+        out: list[list[float]] = []
+        for start in range(0, len(texts), self._batch_size):
+            out.extend(self._batch(texts[start : start + self._batch_size]))
+        return out
+
+    def _batch(self, texts: list[str]) -> list[list[float]]:
+        # The endpoint refuses (HTTP 422) any text over 512 model tokens instead of trimming
+        # it, so a long paragraph is cut to its opening, which carries most of its meaning.
+        texts = [t[: self._max_chars] for t in texts]
+        data = self._post({"model": self._model, "input": texts})
+        items = data.get("data")
+        if not isinstance(items, list) or len(items) != len(texts):
+            raise EmbeddingError("the embedding API returned an unexpected number of vectors")
+        try:
+            ordered = sorted(items, key=lambda item: int(item["index"]))
+            vectors = [[float(x) for x in item["embedding"]] for item in ordered]
+        except (KeyError, TypeError, ValueError) as e:
+            raise EmbeddingError(f"the embedding API returned an unexpected shape: {e}") from e
+        if [int(item["index"]) for item in ordered] != list(range(len(texts))):
+            raise EmbeddingError("the embedding API returned unexpected vector indexes")
+        if any(len(v) != self.dim for v in vectors):
+            raise EmbeddingError(
+                f"the embedding API returned an unexpected size of vectors (expected {self.dim})"
+            )
+        return [normalise(v) for v in vectors]
+
+    def _post(self, payload: Mapping[str, object]) -> dict[str, object]:
+        for delay in (*self._delays, None):
+            wait = self._min_gap - (time.monotonic() - self._last)
+            if wait > 0:
+                self._sleep(wait)
+            self._last = time.monotonic()
+            try:
+                resp = self._http.post(self._url, json=payload, headers=self._headers)
+            except httpx.HTTPError as e:
+                raise EmbeddingError(f"request failed: {type(e).__name__}: {e}") from e
+            if resp.status_code == 200:
+                body = resp.json()
+                if not isinstance(body, dict):
+                    raise EmbeddingError("the embedding API returned an unexpected shape")
+                return body
+            if resp.status_code in _OPENAI_RETRYABLE and delay is not None:
+                self._sleep(delay)
+                continue
+            raise EmbeddingError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        raise EmbeddingError("unreachable")
+
+
+class SceneContextEmbedder:
+    """Says that chunks are embedded with up to `context_chars` of text around them, taken from
+    the same scene (beat) only, and tags the vectors so they never mix with plain ones.
+
+    A 500-character chunk often lacks who "he" is or where the scene is; with its surroundings
+    the small bge model finds the right passage more often. Because the context never leaves the
+    chunk's beat, a chunk the child cannot see yet never lends its words to one they can.
+    """
+
+    def __init__(self, inner: Embedder, context_chars: int) -> None:
+        if context_chars < 1:
+            raise EmbeddingError(f"EMBEDDING_CONTEXT_CHARS must be positive, not {context_chars}")
+        self._inner = inner
+        self.model_id = f"{inner.model_id}+ctx{context_chars}"
+        self.dim = inner.dim
+        self.context_chars = context_chars
+
+    def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+        return self._inner.embed(texts, query=query)
+
+
+class QueryPrefixEmbedder:
+    """Adds an instruction in front of search questions only (documents are left as they are).
+
+    BGE models are trained to match "<instruction> <question>" against plain passages. It wraps
+    the cache, so a prefixed question is cached under its prefixed text.
+    """
+
+    def __init__(self, inner: Embedder, prefix: str) -> None:
+        self._inner = inner
+        self._prefix = prefix.strip()
+        self.model_id = inner.model_id
+        self.dim = inner.dim
+        self.context_chars = inner.context_chars
+
+    def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+        if query and self._prefix:
+            texts = [f"{self._prefix} {t}" for t in texts]
+        return self._inner.embed(texts, query=query)
+
+
 class FakeEmbedder:
     """Deterministic bag-of-words vectors for tests. `synonyms` maps a word to a shared token."""
 
     def __init__(self, dim: int = 64, synonyms: dict[str, str] | None = None) -> None:
         self.model_id = f"fake:{dim}"
         self.dim = dim
+        self.context_chars = 0
         self.calls: list[tuple[list[str], bool]] = []
         self._synonyms = synonyms or {}
 
@@ -140,6 +285,7 @@ class CachedEmbedder:
         self._dir = cache_dir
         self.model_id = inner.model_id
         self.dim = inner.dim
+        self.context_chars = inner.context_chars
 
     def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
         paths = [self._path(t, query) for t in texts]

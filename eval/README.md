@@ -21,6 +21,12 @@ make eval MODES="M1 M1S M2 M2S"        # compare keyword and hybrid retrieval
 make eval-report RUN=eval/runs/<time>  # reopen an earlier report (no model calls); see: ls eval/runs
 ```
 
+Retrieval can be measured on its own, apart from answer quality (the capstone asks for that):
+`make eval-retrieval` runs the agent's position-filtered keyword, meaning and hybrid searches for
+every question with gold lines and reports, at several k, how many gold passages and how many
+facts' evidence lines were found. It makes no chat-model calls and takes seconds, so it is the
+tool for chunking and embedding experiments; confirm a winner with `make eval` afterwards.
+
 The report explains itself: what each mode does step by step, a results table, a legend of every term, and every question with the replies, the passages the search found, and why each mode passed or failed. Modes are M0 (plain model, no book), M1 (retrieval), M1S (retrieval plus sentence evidence), M2 and M2S (the same two with hybrid keyword plus meaning retrieval).
 
 Notes:

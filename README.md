@@ -12,15 +12,21 @@ web page, no accounts yet). The parent and admin areas and deployment are not bu
 
 ## Quick start
 
-You need Python 3.11+ and `make`. You also need three things from the team: the model key and URL,
-the CA certificate, and (for hybrid search only) a free Gemini API key from Google AI Studio.
+You need Python 3.11+ and `make`. You also need from the team: the model key and URL with its CA
+certificate, and (for hybrid search only) the course's embedding key and URL with its own CA
+certificate.
 
 ```
 make setup        # creates .env, the virtual environment and installs everything
 ```
 
-1. Edit `.env` (git-ignored): `LLM_API_KEY`, `LLM_BASE_URL`, and optionally `EMBEDDING_API_KEY`.
-2. Put the certificate at `certs/ca.crt`.
+1. Edit `.env` (git-ignored): `LLM_API_KEY`, `LLM_BASE_URL`, and for hybrid search
+   `EMBEDDING_API_KEY` and `EMBEDDING_BASE_URL`.
+2. Put the model's certificate at `certs/ca.crt` and the embedding endpoint's at
+   `certs/vm02-ca.crt` (they are different files). upGrad ships the model's certificate as
+   `vm06-ca.crt` (the chat server is VM06): save it as `certs/ca.crt`. The embedding one comes
+   as `vm02-ca.crt` (VM02) and keeps its name. The embedding certificate, key and URL come from
+   the upGrad email "[IMPORTANT] Capstone Track B – Embedding Model Endpoint (API Access)".
 3. Check it all:
 
 ```
@@ -62,6 +68,14 @@ make dev-api                         # then open http://localhost:8000
 make eval                            # M0, M1S and M2S on the dev split
 make eval MODES="M1 M1S M2 M2S"      # compare keyword and hybrid retrieval
 make eval ARGS="--category SPO --limit 5"   # a quick subset
+```
+
+   To check the search alone, in seconds and with no model calls (recall@k of keyword, meaning
+   and hybrid search against the golden set's gold passages), use `make eval-retrieval`:
+
+```
+make eval-retrieval                  # dev split, k = 3, 6, 8 and 10
+make eval-retrieval ARGS="--k 6"     # only the agent's own top-k
 ```
 
 Everything has a `make` target; `make help` lists them all, and each target has a comment in the
@@ -123,7 +137,7 @@ rules the validation applies: [docs/design/02-ingestion-pipeline.md](docs/design
 
 The same agent code runs every mode; only the settings differ.
 
-| Mode | Retrieval | Evidence sentences | Needs `EMBEDDING_API_KEY` |
+| Mode | Retrieval | Evidence sentences | Needs the embedding endpoint |
 |---|---|---|---|
 | M0 | none (plain model) | no | no |
 | M1 | keyword (BM25) | no | no |
@@ -132,15 +146,56 @@ The same agent code runs every mode; only the settings differ.
 | M2S | hybrid | yes | yes |
 | M3 / M3S | hybrid, plus entity cards for named characters, places and terms | no / yes | yes, and `make ingest-llm` for the cards |
 
-M2S is the best so far (72% on the dev split). M3S, the entity-card variant, scored 68% in its first
+M2S is the best mode (72% on the dev split in an earlier run; 66% in the comparison below, on the
+same machine and code for every row). M3S, the entity-card variant, scored 68% in its first
 run: the card for a name ("Akela is the leader of the wolf pack") can win the model's attention
 over the book sentences that hold the exact facts, so M3 and M3S are experimental.
 
 Hybrid modes need `make embed BOOK=<id>`
 once per book, and again after `make ingest` rebuilds the chunks (`make demo-data` does both).
 If the vectors are missing, hybrid modes fall back to keyword search and the turn carries the flag
-`no_vectors`. The free Gemini tier has a daily embedding quota: `make embed` stores each batch as
-it goes, earliest chapter first, and resumes where it stopped.
+`no_vectors`. `make embed` stores each batch as it goes, earliest chapter first, and resumes where
+it stopped.
+
+### Embedding models
+
+Vectors are stored per model, so switching models means `make embed BOOK=<id>` once for the new
+one (the old vectors stay and are used again if you switch back).
+
+| `EMBEDDING_PROVIDER` | Model | Dimensions | Keys in `.env` |
+|---|---|---|---|
+| `openai_compatible` (default) | the course endpoint's `bge-small-en-v1.5`, at most 16 texts per request | 384 | `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, certificate at `certs/vm02-ca.crt` |
+| `gemini` | `gemini-embedding-001` (free tier: per-minute and daily quotas) | 768 | `GEMINI_API_KEY` |
+
+**Scene context** (`EMBEDDING_CONTEXT_CHARS`, default 1200): each chunk's vector is made from the
+chunk plus the end of the chunk before it and the start of the one after, from the same beat only,
+up to that many characters. The model still receives the chunk itself; only the search
+fingerprint carries the context, and a beat the child has not reached never lends its words.
+Vectors are tagged `+ctx1200`, so changing the setting needs `make embed` again. Texts are cut to
+`EMBEDDING_MAX_CHARS` (1,600) because the endpoint refuses anything over 512 tokens.
+
+To use Gemini, set the model settings for one command, for example
+`EMBEDDING_PROVIDER=gemini EMBEDDING_MODEL=gemini-embedding-001 EMBEDDING_DIM=768 EMBEDDING_CONTEXT_CHARS=0 make eval`.
+`EMBEDDING_QUERY_PREFIX` puts an instruction in front of search questions only (BGE models are
+trained with one); leave it empty to turn it off.
+
+**Measured on 16 Nov 2026** (dev split, mode M2S, top 6; retrieval from `make eval-retrieval`,
+pass rate from `make eval`; 23 questions have a gold passage, 47 facts have evidence lines):
+
+| Embeddings | Gold passage found | Facts' evidence found | M2S pass rate |
+|---|---|---|---|
+| none (M1S, keyword only) | 15 / 23 | 28 / 47 | 29 / 47 (62%) |
+| Gemini `gemini-embedding-001` | 22 / 23 | 45 / 47 | 31 / 47 (66%) |
+| `bge-small-en-v1.5`, chunk alone | 18 / 23 | 35 / 47 | 29 / 47 (62%) |
+| `bge-small-en-v1.5`, chunk alone + query prefix | 18 / 23 | 35 / 47 | 30 / 47 (64%) |
+| **`bge-small-en-v1.5` + scene context (default)** | **20 / 23** | **42 / 47** | **31 / 47 (66%)** |
+
+The small bge model alone finds fewer gold passages than Gemini; scene context closes most of that
+gap and the answers match Gemini's pass rate. Tuning the fusion (candidates, `RRF_K`, a heavier
+weight on meaning) changed nothing, and the query prefix only reordered the top 3. With
+`RETRIEVAL_TOP_K=8` M2S passed 32 / 47 for 19% more prompt tokens; one question is within the
+judge's noise, so top-k stays 6. Each pass-rate point is about one question in 47, judged by the
+same 8B model, so treat one- or two-question differences as noise.
 
 ## Configuration
 
@@ -158,7 +213,8 @@ it goes, earliest chapter first, and resumes where it stopped.
 | Symptom | Fix |
 |---|---|
 | `make doctor` says MISSING | add the value to `.env`, or the certificate to `certs/ca.crt` |
-| `make ask ... MODE=M2S` says it needs an embedder | set `EMBEDDING_API_KEY` in `.env`, then `make embed BOOK=236` |
+| `make ask ... MODE=M2S` says it needs an embedder | set `EMBEDDING_API_KEY` and `EMBEDDING_BASE_URL` in `.env` and the certificate at `certs/vm02-ca.crt`, then `make embed BOOK=236` |
+| Hybrid turns carry the flag `no_vectors` after switching embedding models | `make embed BOOK=236` once for the new model |
 | Hybrid results look stale after changing chunk size | `make ingest ...` then `make embed BOOK=236` (or `make demo-data`) |
 | Model calls are slow or time out | the endpoint serves one request at a time for the whole group; avoid parallel runs |
 | Want fresh model answers, not cached | add `--no-cache` to `ARGS` |
