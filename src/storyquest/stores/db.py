@@ -10,7 +10,10 @@ from pathlib import Path
 
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, isolation_level=None, timeout=5.0)
+    # check_same_thread=False: the API opens a connection per request, but FastAPI may run the
+    # dependency and the endpoint on different worker threads. A connection is never shared by
+    # two requests at once, so moving between threads is safe.
+    conn = sqlite3.connect(path, isolation_level=None, timeout=5.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

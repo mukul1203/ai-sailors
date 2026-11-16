@@ -40,7 +40,7 @@ ENV := set -a; \
 	load .env; load config.env; set +a;
 
 .PHONY: help setup doctor llm-ping \
-        dev dev-api dev-worker dev-web up down logs ps build \
+        dev dev-api dev-worker dev-web build-web up down logs ps build \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
@@ -107,9 +107,12 @@ dev-api: _need-code ## Run the API and web UI with reload: http://localhost:8000
 dev-worker: _need-code ## Run the ingestion worker
 	@$(ENV) $(BIN)/storyquest worker
 
-# Vite dev server for the React app. Not built yet.
-dev-web: _need-web ## Run the React dev server (not used: the UI is served by the API)
+# React app (web/): the dev server on :5173 proxies /api to `make dev-api` on :8000.
+dev-web: _need-web ## Run the React dev server: http://localhost:5173 (needs make dev-api too)
 	@npm --prefix web run dev
+
+build-web: _need-web ## Build the React app into web/dist (the API serves it at :8000)
+	@npm --prefix web install && npm --prefix web run build
 
 # up, down, logs, ps and build are thin wrappers around `docker compose`. Not built yet.
 up: _need-compose ## Start the stack in Docker (app + worker); add PROFILE=admin via COMPOSE_PROFILES

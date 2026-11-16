@@ -1,0 +1,203 @@
+:root {
+  --bg: #fff8ec;
+  --ink: #2b2a33;
+  --green: #2f8f5b;
+  --green-dark: #1f6b42;
+  --sun: #ffcf5c;
+  --card: #ffffff;
+  --line: #ecdcc0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  font-size: 1.15rem;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1.2rem;
+  background: var(--green);
+  color: #fff;
+}
+
+h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.03em; }
+h2 { margin: 0 0 0.4rem; font-size: 1.5rem; }
+h3 { margin: 0 0 0.6rem; font-size: 1.15rem; }
+
+main { max-width: 46rem; margin: 0 auto; padding: 1rem; }
+[hidden] { display: none !important; }
+
+.lead { font-size: 1.2rem; }
+.note { font-size: 0.95rem; color: #6b6a73; margin: 0.4rem 0 0; }
+
+.card {
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 1rem;
+  padding: 1rem 1.2rem;
+  margin: 0 0 1rem;
+}
+
+.narration { font-size: 1.25rem; margin: 0.4rem 0 0.8rem; }
+
+button {
+  font: inherit;
+  font-weight: 700;
+  color: #fff;
+  background: var(--green);
+  border: 0;
+  border-radius: 0.8rem;
+  padding: 0.7rem 1.1rem;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--green-dark); }
+button:disabled { opacity: 0.55; cursor: progress; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+
+button.link {
+  background: transparent;
+  text-decoration: underline;
+  padding: 0.3rem;
+}
+
+.missions, .cards { display: grid; gap: 0.7rem; }
+.missions button, .cards button { text-align: left; font-size: 1.1rem; }
+.missions small { display: block; font-weight: 400; opacity: 0.9; }
+
+.cards button { background: #fff; color: var(--ink); border: 3px solid var(--green); }
+.cards button:hover:not(:disabled) { background: #e8f6ee; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+.chips span {
+  background: #eaf4ff;
+  border-radius: 999px;
+  padding: 0.2rem 0.8rem;
+  font-size: 0.95rem;
+}
+.chips.words span { background: #fff1c7; font-weight: 700; }
+
+.progress { font-weight: 700; color: var(--green-dark); margin-bottom: 0.5rem; }
+
+.feedback {
+  background: var(--sun);
+  border-radius: 0.8rem;
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+}
+
+.ask label { display: block; font-weight: 700; margin-bottom: 0.4rem; }
+.row { display: flex; gap: 0.5rem; }
+input {
+  flex: 1;
+  font: inherit;
+  padding: 0.6rem 0.8rem;
+  border: 2px solid var(--line);
+  border-radius: 0.8rem;
+}
+
+.answers { margin-top: 0.8rem; display: grid; gap: 0.6rem; }
+.q, .a { padding: 0.5rem 0.9rem; border-radius: 0.8rem; }
+.q { background: #eaf4ff; justify-self: end; max-width: 90%; }
+.a { background: #eaf8ef; max-width: 95%; }
+.a .back { display: block; margin-top: 0.3rem; font-size: 0.95rem; color: #5a5964; }
+
+.error {
+  background: #ffe3e0;
+  border: 2px solid #f0a8a0;
+  border-radius: 0.8rem;
+  padding: 0.6rem 1rem;
+}
+
+.toolbar { margin: 0 0 0.6rem; text-align: right; }
+.toolbar.left { text-align: left; }
+.toolbar .link { color: var(--green-dark); }
+
+.library { display: grid; gap: 0.8rem; }
+.book {
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 1rem;
+  padding: 0.2rem 1rem;
+}
+.book summary { cursor: pointer; padding: 0.7rem 0; font-weight: 700; font-size: 1.2rem; list-style: none; }
+.book summary::-webkit-details-marker { display: none; }
+.book summary::before { content: "\1F4C1  "; }
+.book[open] summary::before { content: "\1F4C2  "; }
+.book summary small { display: block; font-weight: 400; font-size: 0.95rem; color: #5a5964; }
+.book .about { margin: 0 0 0.6rem; font-size: 1rem; }
+.book .caution { margin: 0 0 0.6rem; font-size: 0.9rem; color: #7a5b12; }
+
+.chapters { list-style: none; margin: 0 0 0.8rem; padding: 0; display: grid; gap: 0.5rem; }
+.chapter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+.chapter .name { flex: 1 1 14rem; }
+.chapter .name small { display: block; color: #6b6a73; font-size: 0.9rem; }
+.chapter button { padding: 0.45rem 0.9rem; }
+.chapter button.secondary { background: #fff; color: var(--green-dark); border: 2px solid var(--green); }
+.chip-state { border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.85rem; background: #eee; }
+.chip-state.playable, .chip-state.prepared { background: #e0f4e8; }
+.chip-state.preparing { background: #fff1c7; }
+.chip-state.failed { background: #ffe3e0; }
+
+.hint {
+  background: #eaf4ff;
+  border: 2px dashed #88b6ee;
+  border-radius: 0.8rem;
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+}
+.cards button.tried { opacity: 0.45; text-decoration: line-through; border-color: #bbb; }
+
+nav { display: flex; gap: 0.3rem; }
+.tab { background: transparent; border: 2px solid transparent; padding: 0.4rem 0.9rem; }
+.tab:hover:not(:disabled) { background: var(--green-dark); }
+.tab.active { background: #fff; color: var(--green-dark); }
+.tab.active:hover:not(:disabled) { background: #fff; }
+
+.notice {
+  background: #e0f4e8;
+  border: 2px solid #9fd4b3;
+  border-radius: 0.8rem;
+  padding: 0.6rem 1rem;
+}
+
+.add summary { cursor: pointer; font-weight: 700; }
+.form { display: grid; gap: 0.6rem; margin-top: 0.8rem; }
+.form label, .pick { display: grid; gap: 0.2rem; font-weight: 700; font-size: 1rem; }
+.pick { margin-bottom: 1rem; }
+select { font: inherit; padding: 0.5rem 0.7rem; border: 2px solid var(--line); border-radius: 0.8rem; }
+
+.book summary .chip-state { margin-left: 0.5rem; font-weight: 400; }
+.book > button { margin-bottom: 0.8rem; }
+.beat h3 .chip-state { margin-left: 0.5rem; font-weight: 400; }
+.beat.flagged { border-color: #f0a8a0; }
+.beat .narration.small { font-size: 1rem; }
+.beat .question { font-weight: 700; margin: 0.4rem 0 0.2rem; }
+.answers-list { margin: 0 0 0.4rem; padding-left: 1.2rem; font-size: 1rem; }
+.answers-list .right { font-weight: 700; color: var(--green-dark); }
+.flags, .problems { margin: 0.2rem 0 0.6rem; padding-left: 1.2rem; font-size: 1rem; }
+.flags { color: #a3281c; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.actions button.secondary, .beat button.secondary, .book > button.secondary {
+  background: #fff; color: var(--green-dark); border: 2px solid var(--green);
+}
+
+/* React app additions */
+a.tab { color: #fff; text-decoration: none; border-radius: 0.8rem; }
+a.tab.active { background: #fff; color: var(--green-dark); }
+.empty-note { margin-top: 1rem; }

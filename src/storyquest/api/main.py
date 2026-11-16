@@ -6,12 +6,15 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from importlib.resources import files
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from storyquest.agent.modes import Mode, get_mode
 from storyquest.api import admin, library, play
@@ -33,6 +36,19 @@ class AppState:
     llm_error: str
     embedder: Embedder | None
     mode: Mode
+
+
+class SPAFiles(StaticFiles):
+    """Static files for the React app: an unknown path (a deep link such as /quest/1/0) serves
+    index.html so the browser-side router can handle it. /api paths are never rewritten."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as e:
+            if e.status_code == 404 and not path.startswith("api"):
+                return await super().get_response("index.html", scope)
+            raise
 
 
 class StartBody(BaseModel):
@@ -246,6 +262,12 @@ def create_app(
             app_db, content, settings, state.llm, state.embedder, state.mode, session_id, body.text
         )
 
-    static = files("storyquest.api") / "static"
-    app.mount("/", StaticFiles(directory=str(static), html=True), name="ui")
+    # Serve the React build (web/dist, made by `make build-web`) when it exists; otherwise the
+    # original plain-JS page that ships inside the package.
+    react_build = Path(__file__).resolve().parents[3] / "web" / "dist"
+    if (react_build / "index.html").is_file():
+        app.mount("/", SPAFiles(directory=str(react_build), html=True), name="ui")
+    else:
+        static = files("storyquest.api") / "static"
+        app.mount("/", StaticFiles(directory=str(static), html=True), name="ui")
     return app
