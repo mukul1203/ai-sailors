@@ -25,7 +25,8 @@ make setup        # creates .env, the virtual environment and installs everythin
 2. Put the model's certificate at `certs/ca.crt` and the embedding endpoint's at
    `certs/vm02-ca.crt` (they are different files). upGrad ships the model's certificate as
    `vm06-ca.crt` (the chat server is VM06): save it as `certs/ca.crt`. The embedding one comes
-   as `vm02-ca.crt` (VM02) and keeps its name.
+   as `vm02-ca.crt` (VM02) and keeps its name. The embedding certificate, key and URL come from
+   the upGrad email "[IMPORTANT] Capstone Track B – Embedding Model Endpoint (API Access)".
 3. Check it all:
 
 ```
