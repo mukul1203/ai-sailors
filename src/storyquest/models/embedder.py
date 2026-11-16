@@ -32,6 +32,9 @@ class EmbeddingError(Exception):
 class Embedder(Protocol):
     model_id: str
     dim: int
+    # Characters of surrounding scene text embedded with each chunk (0 = the chunk alone). The
+    # search still returns the chunk itself; only its vector carries the extra context.
+    context_chars: int
 
     def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
         """One unit-length vector per text. `query` marks a search question, not a document."""
@@ -60,6 +63,7 @@ class GeminiEmbedder:
     ) -> None:
         self.model_id = f"{model}:{dim}"
         self.dim = dim
+        self.context_chars = 0
         self._model = model
         self._url = f"{_ENDPOINT}/{model}:batchEmbedContents"
         self._headers = {"x-goog-api-key": api_key}
@@ -145,6 +149,7 @@ class OpenAICompatibleEmbedder:
             raise EmbeddingError(f"EMBEDDING_MAX_CHARS must be at least 1, not {max_chars}")
         self.model_id = f"{model}:{dim}"
         self.dim = dim
+        self.context_chars = 0
         self._model = model
         self._url = f"{base_url.rstrip('/')}/embeddings"
         self._headers = {"Authorization": f"Bearer {api_key}"}
@@ -208,6 +213,27 @@ class OpenAICompatibleEmbedder:
         raise EmbeddingError("unreachable")
 
 
+class SceneContextEmbedder:
+    """Says that chunks are embedded with up to `context_chars` of text around them, taken from
+    the same scene (beat) only, and tags the vectors so they never mix with plain ones.
+
+    A 500-character chunk often lacks who "he" is or where the scene is; with its surroundings
+    the small bge model finds the right passage more often. Because the context never leaves the
+    chunk's beat, a chunk the child cannot see yet never lends its words to one they can.
+    """
+
+    def __init__(self, inner: Embedder, context_chars: int) -> None:
+        if context_chars < 1:
+            raise EmbeddingError(f"EMBEDDING_CONTEXT_CHARS must be positive, not {context_chars}")
+        self._inner = inner
+        self.model_id = f"{inner.model_id}+ctx{context_chars}"
+        self.dim = inner.dim
+        self.context_chars = context_chars
+
+    def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
+        return self._inner.embed(texts, query=query)
+
+
 class QueryPrefixEmbedder:
     """Adds an instruction in front of search questions only (documents are left as they are).
 
@@ -220,6 +246,7 @@ class QueryPrefixEmbedder:
         self._prefix = prefix.strip()
         self.model_id = inner.model_id
         self.dim = inner.dim
+        self.context_chars = inner.context_chars
 
     def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
         if query and self._prefix:
@@ -233,6 +260,7 @@ class FakeEmbedder:
     def __init__(self, dim: int = 64, synonyms: dict[str, str] | None = None) -> None:
         self.model_id = f"fake:{dim}"
         self.dim = dim
+        self.context_chars = 0
         self.calls: list[tuple[list[str], bool]] = []
         self._synonyms = synonyms or {}
 
@@ -257,6 +285,7 @@ class CachedEmbedder:
         self._dir = cache_dir
         self.model_id = inner.model_id
         self.dim = inner.dim
+        self.context_chars = inner.context_chars
 
     def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
         paths = [self._path(t, query) for t in texts]

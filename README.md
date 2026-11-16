@@ -143,7 +143,8 @@ The same agent code runs every mode; only the settings differ.
 | M2S | hybrid | yes | yes |
 | M3 / M3S | hybrid, plus entity cards for named characters, places and terms | no / yes | yes, and `make ingest-llm` for the cards |
 
-M2S is the best so far (72% on the dev split). M3S, the entity-card variant, scored 68% in its first
+M2S is the best mode (72% on the dev split in an earlier run; 66% in the comparison below, on the
+same machine and code for every row). M3S, the entity-card variant, scored 68% in its first
 run: the card for a name ("Akela is the leader of the wolf pack") can win the model's attention
 over the book sentences that hold the exact facts, so M3 and M3S are experimental.
 
@@ -163,10 +164,35 @@ one (the old vectors stay and are used again if you switch back).
 | `openai_compatible` (default) | the course endpoint's `bge-small-en-v1.5`, at most 16 texts per request | 384 | `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, certificate at `certs/vm02-ca.crt` |
 | `gemini` | `gemini-embedding-001` (free tier: per-minute and daily quotas) | 768 | `GEMINI_API_KEY` |
 
-To use Gemini, set the three model settings for one command, for example
-`EMBEDDING_PROVIDER=gemini EMBEDDING_MODEL=gemini-embedding-001 EMBEDDING_DIM=768 make eval`.
+**Scene context** (`EMBEDDING_CONTEXT_CHARS`, default 1200): each chunk's vector is made from the
+chunk plus the end of the chunk before it and the start of the one after, from the same beat only,
+up to that many characters. The model still receives the chunk itself; only the search
+fingerprint carries the context, and a beat the child has not reached never lends its words.
+Vectors are tagged `+ctx1200`, so changing the setting needs `make embed` again. Texts are cut to
+`EMBEDDING_MAX_CHARS` (1,600) because the endpoint refuses anything over 512 tokens.
+
+To use Gemini, set the model settings for one command, for example
+`EMBEDDING_PROVIDER=gemini EMBEDDING_MODEL=gemini-embedding-001 EMBEDDING_DIM=768 EMBEDDING_CONTEXT_CHARS=0 make eval`.
 `EMBEDDING_QUERY_PREFIX` puts an instruction in front of search questions only (BGE models are
 trained with one); leave it empty to turn it off.
+
+**Measured on 16 Nov 2026** (dev split, mode M2S, top 6; retrieval from `make eval-retrieval`,
+pass rate from `make eval`; 23 questions have a gold passage, 47 facts have evidence lines):
+
+| Embeddings | Gold passage found | Facts' evidence found | M2S pass rate |
+|---|---|---|---|
+| none (M1S, keyword only) | 15 / 23 | 28 / 47 | 29 / 47 (62%) |
+| Gemini `gemini-embedding-001` | 22 / 23 | 45 / 47 | 31 / 47 (66%) |
+| `bge-small-en-v1.5`, chunk alone | 18 / 23 | 35 / 47 | 29 / 47 (62%) |
+| `bge-small-en-v1.5`, chunk alone + query prefix | 18 / 23 | 35 / 47 | 30 / 47 (64%) |
+| **`bge-small-en-v1.5` + scene context (default)** | **20 / 23** | **42 / 47** | **31 / 47 (66%)** |
+
+The small bge model alone finds fewer gold passages than Gemini; scene context closes most of that
+gap and the answers match Gemini's pass rate. Tuning the fusion (candidates, `RRF_K`, a heavier
+weight on meaning) changed nothing, and the query prefix only reordered the top 3. With
+`RETRIEVAL_TOP_K=8` M2S passed 32 / 47 for 19% more prompt tokens; one question is within the
+judge's noise, so top-k stays 6. Each pass-rate point is about one question in 47, judged by the
+same 8B model, so treat one- or two-question differences as noise.
 
 ## Configuration
 

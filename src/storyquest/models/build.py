@@ -10,6 +10,7 @@ from storyquest.models.embedder import (
     GeminiEmbedder,
     OpenAICompatibleEmbedder,
     QueryPrefixEmbedder,
+    SceneContextEmbedder,
 )
 from storyquest.models.fake import FakeClient
 from storyquest.models.llm import LLMClient, LLMError
@@ -81,6 +82,8 @@ def build_embedder(settings: Settings, *, use_cache: bool = True) -> Embedder:
         )
     else:
         raise EmbeddingError(f"unknown EMBEDDING_PROVIDER {settings.embedding_provider!r}")
+    if settings.embedding_context_chars:
+        embedder = SceneContextEmbedder(embedder, settings.embedding_context_chars)
     if use_cache:
         embedder = CachedEmbedder(embedder, settings.data_dir / "cache" / "embeddings")
     if settings.embedding_query_prefix:

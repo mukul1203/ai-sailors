@@ -50,6 +50,7 @@ class Settings:
     embedding_ca_cert_path: Path
     embedding_batch_size: int
     embedding_max_chars: int
+    embedding_context_chars: int
     embedding_query_prefix: str
     generation_max_tokens: int
     max_child_input_chars: int
@@ -111,6 +112,7 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         embedding_ca_cert_path=path(get("EMBEDDING_CA_CERT_PATH", "certs/vm02-ca.crt")),
         embedding_batch_size=int(get("EMBEDDING_BATCH_SIZE", "16")),
         embedding_max_chars=int(get("EMBEDDING_MAX_CHARS", "1600")),
+        embedding_context_chars=int(get("EMBEDDING_CONTEXT_CHARS", "0")),
         embedding_query_prefix=get("EMBEDDING_QUERY_PREFIX"),
         generation_max_tokens=int(get("GENERATION_MAX_TOKENS", "200")),
         max_child_input_chars=int(get("MAX_CHILD_INPUT_CHARS", "300")),
