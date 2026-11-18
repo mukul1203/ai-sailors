@@ -38,10 +38,11 @@ from storyquest.ingestion.review import approve_beats, publish, render_review
 from storyquest.ingestion.run import RunOptions, parse_stages, run_ingestion
 from storyquest.ingestion.status import render_entities, render_status
 from storyquest.ingestion.worker import options_to_json, run_worker
-from storyquest.models.build import build_embedder, build_llm
+from storyquest.models.build import build_embedder, build_llm, build_reranker
 from storyquest.models.embedder import Embedder, EmbeddingError
 from storyquest.models.fake import FakeClient
 from storyquest.models.llm import LLMError, Message
+from storyquest.models.reranker import RerankerError
 from storyquest.stores.content_repo import ContentRepo
 from storyquest.stores.db import connect, migrate, migrations_dir
 from storyquest.stores.search import hybrid_search, search_chunks
@@ -293,8 +294,11 @@ def _ask(args: argparse.Namespace) -> int:
         llm = build_llm(settings, use_cache=not args.no_cache)
         mode = get_mode(args.mode)
         embedder = _embedder_for(settings, [mode], no_cache=args.no_cache)
-        ctx = load_context(conn, llm, settings, args.book, embedder)
-    except (LLMError, AgentError, EmbeddingError, ValueError) as e:
+        reranker = build_reranker(settings) if mode.rerank else None
+        if mode.rerank and reranker is None:
+            raise RerankerError("M4 requires RERANKER_PROVIDER=cross_encoder")
+        ctx = load_context(conn, llm, settings, args.book, embedder, reranker=reranker)
+    except (LLMError, AgentError, EmbeddingError, RerankerError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     position = Position(args.chapter, args.beat)
@@ -339,8 +343,11 @@ def _eval_run(args: argparse.Namespace) -> int:
         modes = _parse_modes(args.modes)
         llm = build_llm(settings, use_cache=not args.no_cache)
         embedder = _embedder_for(settings, modes, no_cache=args.no_cache)
-        ctx = load_context(conn, llm, settings, args.book, embedder)
-    except (LLMError, AgentError, EmbeddingError, ValueError) as e:
+        reranker = build_reranker(settings) if any(mode.rerank for mode in modes) else None
+        if any(mode.rerank for mode in modes) and reranker is None:
+            raise RerankerError("M4 requires RERANKER_PROVIDER=cross_encoder")
+        ctx = load_context(conn, llm, settings, args.book, embedder, reranker=reranker)
+    except (LLMError, AgentError, EmbeddingError, RerankerError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     batch = new_batch_dir(settings.root / "eval" / "runs")

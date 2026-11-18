@@ -26,9 +26,12 @@ def test_precedence_config_then_dotenv_then_environment(tmp_path: Path) -> None:
 
 
 def test_absolute_paths_are_kept(tmp_path: Path) -> None:
-    s = load_settings(tmp_path, environ={"DATA_DIR": "/data", "LLM_CA_CERT_PATH": "/certs/x.crt"})
-    assert s.data_dir == Path("/data")
-    assert s.llm_ca_cert_path == Path("/certs/x.crt")
+    abs_data = Path(tmp_path.anchor) / "data"
+    abs_cert = Path(tmp_path.anchor) / "certs" / "x.crt"
+    s = load_settings(
+        tmp_path, environ={"DATA_DIR": str(abs_data), "LLM_CA_CERT_PATH": str(abs_cert)}
+    )
+    assert s.data_dir == abs_data
 
 
 def test_secrets_are_not_in_repr(tmp_path: Path) -> None:

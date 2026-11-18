@@ -15,6 +15,12 @@ from storyquest.models.embedder import (
 from storyquest.models.fake import FakeClient
 from storyquest.models.llm import LLMClient, LLMError
 from storyquest.models.openai_compatible import OpenAICompatibleClient
+from storyquest.models.reranker import (
+    CrossEncoderReranker,
+    FakeReranker,
+    Reranker,
+    RerankerError,
+)
 from storyquest.models.throttle import ThrottledClient
 
 
@@ -89,3 +95,17 @@ def build_embedder(settings: Settings, *, use_cache: bool = True) -> Embedder:
     if settings.embedding_query_prefix:
         embedder = QueryPrefixEmbedder(embedder, settings.embedding_query_prefix)
     return embedder
+
+
+def build_reranker(settings: Settings) -> Reranker | None:
+    if settings.reranker_provider in ("", "none"):
+        return None
+    if settings.reranker_provider == "fake":
+        return FakeReranker()
+    if settings.reranker_provider == "cross_encoder":
+        return CrossEncoderReranker(
+            settings.reranker_model,
+            batch_size=settings.reranker_batch_size,
+            max_length=settings.reranker_max_length,
+        )
+    raise RerankerError(f"unknown RERANKER_PROVIDER {settings.reranker_provider!r}")

@@ -43,6 +43,10 @@ class Settings:
     retrieval_top_k: int
     retrieval_candidates: int
     rrf_k: int
+    reranker_provider: str
+    reranker_model: str
+    reranker_batch_size: int
+    reranker_max_length: int
     embedding_provider: str
     embedding_model: str
     embedding_dim: int
@@ -105,6 +109,10 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         retrieval_top_k=int(get("RETRIEVAL_TOP_K", "6")),
         retrieval_candidates=int(get("RETRIEVAL_CANDIDATES", "20")),
         rrf_k=int(get("RRF_K", "60")),
+        reranker_provider=get("RERANKER_PROVIDER", "none"),
+        reranker_model=get("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"),
+        reranker_batch_size=int(get("RERANKER_BATCH_SIZE", "32")),
+        reranker_max_length=int(get("RERANKER_MAX_LENGTH", "512")),
         embedding_provider=get("EMBEDDING_PROVIDER", "gemini"),
         embedding_model=get("EMBEDDING_MODEL", "gemini-embedding-001"),
         embedding_dim=int(get("EMBEDDING_DIM", "768")),

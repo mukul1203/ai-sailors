@@ -6,10 +6,12 @@ import pytest
 from llm_helpers import ScriptedLLM
 from storyquest.agent.context import AgentContext, AgentError
 from storyquest.agent.modes import describe_steps, get_mode
+from storyquest.agent.retrieval import retrieve
 from storyquest.agent.turn import run_turn
 from storyquest.domain.position import Position
 from storyquest.models.embedder import EmbeddingError, FakeEmbedder
 from storyquest.models.llm import LLMClient
+from storyquest.models.reranker import FakeReranker, RerankerError
 from storyquest.stores.search import hybrid_search, rrf_fuse, search_chunks
 from storyquest.stores.vector import (
     chunks_without_vectors,
@@ -112,6 +114,36 @@ def test_m2_gives_the_model_hybrid_passages(make_ctx: MakeCtx) -> None:
     result = run_turn(ctx, "Why does Shere Khan limp?", START, mode=get_mode("M2"))
     assert result.reply == "He is lame." and result.flags == []
     assert result.passages and all(p.dense_rank is not None for p in result.passages)
+
+
+def test_m4_reranks_candidate_pool_before_trimming_to_top_k(make_ctx: MakeCtx) -> None:
+    ctx, _ = embedded(make_ctx)
+    ctx = replace(ctx, reranker=FakeReranker())
+
+    hits, flags = retrieve(ctx, get_mode("M4"), "Why did Mowgli cry?", Position(0, 4))
+
+    chunks = [hit for hit in hits if hit.source == "chunk"]
+    assert flags == []
+    assert len(chunks) == ctx.settings.retrieval_top_k
+    assert all(hit.rerank_rank is not None and hit.rerank_score is not None for hit in chunks)
+    assert all((hit.chapter_idx, hit.beat_idx) <= (0, 4) for hit in chunks)
+
+
+def test_reranker_failure_keeps_hybrid_order_and_sets_flag(make_ctx: MakeCtx) -> None:
+    class BrokenReranker:
+        model_id = "broken"
+
+        def rerank(self, query: str, passages):
+            raise RerankerError("model unavailable")
+
+    ctx, _ = embedded(make_ctx)
+    ctx = replace(ctx, reranker=BrokenReranker())
+
+    hits, flags = retrieve(ctx, get_mode("M4"), "Why did Mowgli cry?", Position(0, 4))
+
+    assert hits
+    assert flags == ["reranker_error:model unavailable"]
+    assert len([hit for hit in hits if hit.source == "chunk"]) == ctx.settings.retrieval_top_k
 
 
 def test_a_hybrid_mode_without_an_embedder_is_an_error(make_ctx: MakeCtx) -> None:

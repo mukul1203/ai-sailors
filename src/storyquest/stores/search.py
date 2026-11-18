@@ -27,6 +27,8 @@ class SearchHit:
     bm25_rank: int | None = None  # 1-based rank in the keyword results (hybrid search only)
     dense_rank: int | None = None  # 1-based rank in the meaning results (hybrid search only)
     source: str = "chunk"  # "chunk" (book text) or "entity" (a card; offsets are -1)
+    rerank_score: float | None = None
+    rerank_rank: int | None = None
 
 
 def to_match_query(text: str) -> str | None:

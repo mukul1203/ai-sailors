@@ -20,13 +20,15 @@ from storyquest.agent.modes import Mode, get_mode
 from storyquest.api import admin, library, play
 from storyquest.config import Settings, load_settings
 from storyquest.ingestion.worker import run_worker
-from storyquest.models.build import build_embedder, build_llm
+from storyquest.models.build import build_embedder, build_llm, build_reranker
 from storyquest.models.embedder import Embedder, EmbeddingError
 from storyquest.models.llm import LLMClient, LLMError
+from storyquest.models.reranker import Reranker
 from storyquest.stores.db import connect, migrate, migrations_dir
 
 # Without the embeddings (no key, or none yet) a hybrid mode becomes its keyword twin.
 _KEYWORD_TWIN = {"M2": "M1", "M2S": "M1S", "M3": "M1", "M3S": "M1S"}
+_RERANKER_TWIN = {"M4": "M2", "M4S": "M2S"}
 
 
 @dataclass
@@ -35,6 +37,7 @@ class AppState:
     llm: LLMClient | None
     llm_error: str
     embedder: Embedder | None
+    reranker: Reranker | None
     mode: Mode
 
 
@@ -79,10 +82,16 @@ class ApproveBody(BaseModel):
     include_flagged: bool = False
 
 
-def _choose_mode(settings: Settings, embedder: Embedder | None) -> Mode:
+def _choose_mode(
+    settings: Settings,
+    embedder: Embedder | None,
+    reranker: Reranker | None = None,
+) -> Mode:
     mode = get_mode(settings.play_mode)
     if mode.hybrid and embedder is None:
         return get_mode(_KEYWORD_TWIN[mode.name])
+    if mode.rerank and reranker is None:
+        return get_mode(_RERANKER_TWIN[mode.name])
     return mode
 
 
@@ -98,6 +107,7 @@ def create_app(
     settings: Settings | None = None,
     llm: LLMClient | None = None,
     embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
 ) -> FastAPI:
     """Build the app. Tests pass a fake `llm` and `embedder`; otherwise they come from settings,
     and if the model is not configured the app still starts (the sidekick says it is resting)."""
@@ -114,7 +124,16 @@ def create_app(
             embedder = build_embedder(settings)
         except EmbeddingError:
             embedder = None
-    state = AppState(settings, llm, llm_error, embedder, _choose_mode(settings, embedder))
+    if mode.rerank and reranker is None:
+        reranker = build_reranker(settings)
+    state = AppState(
+        settings,
+        llm,
+        llm_error,
+        embedder,
+        reranker,
+        _choose_mode(settings, embedder, reranker),
+    )
 
     for name in ("content", "app"):
         conn = connect(settings.data_dir / f"{name}.db")
@@ -259,7 +278,15 @@ def create_app(
         if state.llm is None:
             raise play.PlayError(503, "not_ready", "The sidekick is resting. Try again later!")
         return play.ask(
-            app_db, content, settings, state.llm, state.embedder, state.mode, session_id, body.text
+            app_db,
+            content,
+            settings,
+            state.llm,
+            state.embedder,
+            state.mode,
+            session_id,
+            body.text,
+            reranker=state.reranker,
         )
 
     # Serve the React build (web/dist, made by `make build-web`) when it exists; otherwise the

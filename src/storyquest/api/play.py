@@ -21,6 +21,7 @@ from storyquest.domain.book import Beat, Chapter
 from storyquest.domain.position import Position
 from storyquest.models.embedder import Embedder
 from storyquest.models.llm import LLMClient
+from storyquest.models.reranker import Reranker
 from storyquest.stores.content_repo import ContentRepo
 
 BACK_TO_QUEST = "Ready to go back to the quest?"
@@ -261,6 +262,8 @@ def ask(
     mode: Mode,
     session_id: str,
     text: str,
+    *,
+    reranker: Reranker | None = None,
 ) -> dict[str, Any]:
     """A child's free-text question, answered at their position in the book."""
     session = _row(app, session_id)
@@ -280,7 +283,14 @@ def ask(
         raise PlayError(429, "too_fast", "One moment! Let the sidekick think, then ask again.")
 
     try:
-        ctx = load_context(content, llm, settings, session["book_id"], embedder)
+        ctx = load_context(
+            content,
+            llm,
+            settings,
+            session["book_id"],
+            embedder,
+            reranker=reranker,
+        )
     except AgentError as e:
         raise PlayError(503, "not_ready", str(e)) from e
     beats = _beats(content, session)

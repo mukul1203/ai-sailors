@@ -8,9 +8,13 @@ Scope: the boundary between the application and any model provider. Nothing outs
 |---|---|---|
 | `LLMClient` | `chat(messages, schema=None, temperature, max_tokens, stream=False)` → text or validated JSON, with token usage | Hosted `Qwen/Qwen3-8B` (vLLM, OpenAI-compatible chat endpoint); also a `fake` provider for tests and offline work |
 | `Embedder` | `embed(texts, query=)` → unit vectors, `model_id`, `dim` | `openai_compatible` (default: the course's separate embedding endpoint, `bge-small-en-v1.5`, 384 dimensions, at most 16 texts per request, its own CA certificate), `gemini` (the Gemini embedding API, `gemini-embedding-001`, 768 dimensions), `fake` (tests); wrapped by a disk cache, and optionally by a query prefix. The chat endpoint's own `/embeddings` returns 404 "not available in this pilot" |
-| `Reranker` | `rerank(query, passages)` → ordered ids with scores | LLM-based listwise rerank using `LLMClient` |
+| `Reranker` | `rerank(query, passages)` → ordered passages with scores | Optional local `sentence-transformers` cross encoder; deterministic fake for tests |
 
-Implementations are chosen in config. Adding a provider means adding one class.
+Implementations are chosen in config. Enable the local cross encoder with
+`RERANKER_PROVIDER=cross_encoder` and install the optional `reranker` dependency group. Models are
+loaded lazily on the first reranking request. M4/M4S retrieve the configured candidate pool first,
+then rerank those spoiler-filtered passages down to `RETRIEVAL_TOP_K`; if scoring fails, the
+original retrieval order is used and the turn is flagged.
 
 ## Endpoint limits (from the Track B API guide)
 
