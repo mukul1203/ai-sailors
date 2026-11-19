@@ -18,6 +18,8 @@ certificate.
 
 ```
 make setup        # creates .env, the virtual environment and installs everything
+
+.\.venv\Scripts\python.exe -m pip install -e ".[reranker]"
 ```
 
 1. Edit `.env` (git-ignored): `LLM_API_KEY`, `LLM_BASE_URL`, and for hybrid search
@@ -33,6 +35,7 @@ make setup        # creates .env, the virtual environment and installs everythin
 make doctor       # tools, secrets and certificate: every line should say "ok"
 make llm-ping     # one tiny request to the model: "HTTP 200" means it works
 make check        # data checks, lint, types and tests (no network needed)
+
 ```
 
 4. Load the Jungle Book (seed, ingest with the hand-written beats, embed for hybrid search):
@@ -68,6 +71,7 @@ make dev-api                         # then open http://localhost:8000
 make eval                            # M0, M1S and M2S on the dev split
 make eval MODES="M1 M1S M2 M2S"      # compare keyword and hybrid retrieval
 make eval ARGS="--category SPO --limit 5"   # a quick subset
+make eval MODES="M2S M4S" SPLIT=dev ARGS="--no-open"
 ```
 
    To check the search alone, in seconds and with no model calls (recall@k of keyword, meaning
