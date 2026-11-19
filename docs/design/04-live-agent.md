@@ -86,13 +86,13 @@ One pipeline, controlled by config, so evals differ only by the toggles.
 | M1 | BM25 | no | no | no | no |
 | M2 | hybrid (needs embedder) | no | no | no | no |
 | M3 | hybrid | yes | no | no | no |
-| M4 (later) | hybrid | yes | no | yes | no |
+| M4 | hybrid | yes | no | yes | no |
 | M5 (later) | hybrid | yes | yes | yes | no |
 | M6 (later) | hybrid | yes | yes | yes | yes |
 
-The S variants (M1S, M2S, M3S) add sentence evidence: see below. Without an embedder, run the BM25-only variants. Rewrite, rerank and the critic are added later, one at a time, each measured against the golden set.
+The S variants (M1S, M2S, M3S, M4S) add sentence evidence: see below. Without an embedder, run the BM25-only variants. Rewrite and the critic remain deferred; reranking is opt-in and should be measured against the golden set.
 
-Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences), the hybrid modes M2 (BM25 plus embeddings fused by reciprocal rank fusion) and M2S (M2 with sentence evidence), and the entity-card modes M3 and M3S (M2 and M2S plus the cards of characters, places and terms the child names, written during ingestion). Hybrid search embeds the child's question per turn and falls back to BM25 with the flag `embedding_error` if the embedding call fails, or `no_vectors` if the book has no vectors yet. First measurement on the dev split: M2S 72% (34/47), M3S 68% (32/47). The cards did not help: a short card such as "Akela is the leader of the wolf pack" competes with the book sentences that hold the exact facts (CAN-013, CAN-005 regressed), so M3 and M3S stay experimental until the cards or their use are improved.
+Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences), the hybrid modes M2 and M2S, the entity-card modes M3 and M3S, and the cross-encoder modes M4 and M4S. M4/M4S retrieve the configured candidate pool with hybrid search, rerank only those position-filtered book chunks, then add eligible entity cards. The cross encoder is optional (`RERANKER_PROVIDER=cross_encoder`); scoring failures preserve the original order and set `reranker_error`. The earlier dev-split measurements were M2S 72% (34/47), M3S 68% (32/47); reranking needs a fresh eval against the golden set before it is selected for play.
 
 ## Guardrails
 

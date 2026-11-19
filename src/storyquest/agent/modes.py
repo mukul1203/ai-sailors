@@ -11,6 +11,7 @@ class Mode:
     grounded: bool = False  # the model must pick evidence sentences; code looks them up
     hybrid: bool = False  # search by keywords and by meaning (embeddings), then fuse
     entities: bool = False  # add the cards of characters, places and terms the child names
+    rerank: bool = False
 
 
 MODES = {
@@ -29,6 +30,23 @@ MODES = {
         grounded=True,
         hybrid=True,
         entities=True,
+    ),
+    "M4": Mode(
+        "M4",
+        "Hybrid retrieval + entity cards + cross-encoder reranking",
+        retrieval=True,
+        hybrid=True,
+        entities=True,
+        rerank=True,
+    ),
+    "M4S": Mode(
+        "M4S",
+        "Hybrid retrieval + entity cards + reranking + sentence evidence",
+        retrieval=True,
+        grounded=True,
+        hybrid=True,
+        entities=True,
+        rerank=True,
     ),
 }
 
@@ -65,6 +83,8 @@ def describe_steps(mode: Mode, top_k: int) -> list[str]:
             if mode.hybrid
             else "BM25 keyword ranking"
         )
+        if mode.rerank:
+            how += ", then cross-encoder reranking"
         steps.append(
             f"Retrieve: search the book for the {top_k} best-matching passages ({how}). Only "
             "text the child has already read can be found, which prevents spoilers. If nothing "

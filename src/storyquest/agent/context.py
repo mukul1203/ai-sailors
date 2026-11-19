@@ -6,6 +6,7 @@ from storyquest.domain.book import Beat, Book, Chapter, Entity
 from storyquest.domain.position import Position
 from storyquest.models.embedder import Embedder
 from storyquest.models.llm import LLMClient
+from storyquest.models.reranker import Reranker
 from storyquest.stores.content_repo import ContentRepo
 
 
@@ -33,6 +34,7 @@ class AgentContext:
     names: dict[str, int]
     embedder: Embedder | None = None  # needed by the hybrid modes only
     entities: list[Entity] = field(default_factory=list)  # cards, for the entity modes
+    reranker: Reranker | None = None
 
     def where(self, position: Position) -> Where:
         chapter = next((c for c in self.chapters if c.idx == position.chapter_idx), None)
@@ -53,6 +55,7 @@ def load_context(
     settings: Settings,
     book_id: int,
     embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
 ) -> AgentContext:
     repo = ContentRepo(conn)
     book = repo.get_book(book_id)
@@ -72,4 +75,5 @@ def load_context(
         repo.get_names(book_id),
         embedder,
         repo.get_entities(book_id),
+        reranker,
     )
