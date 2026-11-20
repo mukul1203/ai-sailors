@@ -24,10 +24,10 @@ export default function Library() {
   const books = [...byBook.values()];
 
   return (
-    <section>
+    <section className="kid">
       <p className="lead">
-        Open a book, pick a chapter, and play! Choose what you think happens next, and ask your
-        sidekick anything about the story.
+        📚 Pick a story and play! Choose what you think happens next, and ask Dumbo
+        anything about the story.
       </p>
       {error && <p className="error" role="alert">{error.message}</p>}
       <div className="library">

@@ -1,83 +1,193 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useFlash } from "../flash";
-import type { ApproveBody, ReviewBeat, ReviewChapter } from "../types";
+import type { ApproveBody, LibraryBook, ReviewBeat, ReviewChapter, ReviewView } from "../types";
+
+type Stage = "published" | "none" | "not_reviewed" | "in_progress" | "reviewed";
+
+const STAGE_TEXT: Record<Stage, string> = {
+  published: "🌟 Published",
+  reviewed: "✅ Reviewed, ready to publish",
+  in_progress: "🟡 Review in progress",
+  not_reviewed: "⚪ Not reviewed",
+  none: "○ Nothing to review yet",
+};
+const STAGE_CLASS: Record<Stage, string> = {
+  published: "playable", reviewed: "playable", in_progress: "preparing", not_reviewed: "", none: "",
+};
+
+// Where a book is in review, from its parts: none approved, some approved, all approved.
+function stageOf(r: ReviewView | undefined): { stage: Stage; approved: number; total: number } {
+  const beats = r?.chapters.flatMap((c) => c.beats.filter((b) => b.narration)) ?? [];
+  const approved = beats.filter((b) => b.status === "approved").length;
+  const total = beats.length;
+  let stage: Stage = "not_reviewed";
+  if (r?.status === "ready") stage = "published";
+  else if (total === 0) stage = "none";
+  else if (approved === total) stage = "reviewed";
+  else if (approved > 0) stage = "in_progress";
+  return { stage, approved, total };
+}
+
+// One card per book with its review stage; the selected book is highlighted.
+function BookPicker({
+  books, selected, onSelect,
+}: { books: LibraryBook[]; selected: number | null; onSelect: (id: number) => void }) {
+  const results = useQueries({
+    queries: books.map((b) => ({
+      queryKey: ["review", b.id],
+      queryFn: () => api.review(b.id as number),
+    })),
+  });
+  return (
+    <div className="picker" role="group" aria-label="Books to review">
+      {books.map((b, i) => {
+        const { stage, approved, total } = stageOf(results[i]?.data);
+        const loading = results[i]?.isPending;
+        return (
+          <button
+            key={b.id} type="button" aria-pressed={b.id === selected}
+            className={`pick-card${b.id === selected ? " on" : ""}`}
+            onClick={() => onSelect(b.id as number)}
+          >
+            <span className="pick-title">{b.title}</span>
+            <span className={`chip-state ${STAGE_CLASS[stage]}`}>
+              {loading ? "Loading..." : STAGE_TEXT[stage]}
+            </span>
+            {!loading && total > 0 && stage !== "published" && (
+              <span className="prep-text">{approved} of {total} parts approved</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function BeatCard({
-  beat, onApprove, busy,
-}: { beat: ReviewBeat; onApprove: () => void; busy: boolean }) {
+  beat, onApprove, busy, pending,
+}: { beat: ReviewBeat; onApprove: () => void; busy: boolean; pending: boolean }) {
   const approved = beat.status === "approved";
-  return (
-    <article className={`card beat${beat.flags.length ? " flagged" : ""}`}>
-      <h3>
-        Part {beat.idx + 1}: {beat.title || "(no title)"}
-        <span className={`chip-state ${approved ? "playable" : ""}`}>{beat.status}</span>
-      </h3>
-      {!beat.narration ? (
-        <p className="note">No text yet: prepare this chapter first.</p>
-      ) : (
+  const flagged = beat.flags.length > 0;
+  const badge = approved ? "✅ Approved" : flagged ? "⚠️ Check this" : "⏳ Waiting";
+  const cls = approved ? "playable" : flagged ? "failed" : "preparing";
+  const body = !beat.narration ? (
+    <p className="note">No text yet: <Link to="/books">prepare this chapter first</Link>.</p>
+  ) : (
+    <>
+      {flagged && (
+        <div className="callout" role="note">
+          <b>Please check:</b>
+          <ul className="flags">{beat.flags.map((f) => <li key={f}>{f}</li>)}</ul>
+        </div>
+      )}
+      <p className="narration small">{beat.narration}</p>
+      {beat.question && (
         <>
-          {beat.flags.length > 0 && (
-            <ul className="flags">{beat.flags.map((f) => <li key={f}>{f}</li>)}</ul>
-          )}
-          <p className="narration small">{beat.narration}</p>
-          {beat.question && (
-            <>
-              <p className="question">{beat.question}</p>
-              <ul className="answers-list">
-                {beat.cards.map((c) => (
-                  <li key={c.text} className={c.right ? "right" : ""}>
-                    {c.right ? "Right: " : "Wrong: "}{c.text}
-                  </li>
-                ))}
-              </ul>
-              {beat.hints.length > 0 && <p className="note">Hints: {beat.hints.join(" / ")}</p>}
-            </>
-          )}
-          {!approved && (
-            <button className="secondary" disabled={busy} onClick={onApprove}>
-              {beat.flags.length ? "Approve despite the warning" : "Approve"}
-            </button>
+          <p className="question">❓ {beat.question}</p>
+          <ul className="answers-list">
+            {beat.cards.map((c) => (
+              <li key={c.text} className={c.right ? "right" : "wrong"}>
+                <span aria-hidden="true">{c.right ? "✓" : "✗"}</span>{" "}
+                <span className="sr-only">{c.right ? "Right: " : "Wrong: "}</span>{c.text}
+              </li>
+            ))}
+          </ul>
+          {beat.hints.length > 0 && (
+            <details className="hints">
+              <summary>Hints ({beat.hints.length})</summary>
+              <ol>{beat.hints.map((h) => <li key={h}>{h}</li>)}</ol>
+            </details>
           )}
         </>
       )}
+      {!approved && (
+        <button className={flagged ? "secondary" : ""} disabled={busy} onClick={onApprove}>
+          {pending ? "Approving..." : flagged ? "Approve anyway" : "Approve"}
+        </button>
+      )}
+    </>
+  );
+  const head = (
+    <>
+      Part {beat.idx + 1}: {beat.title || "(no title)"}
+      <span className={`chip-state ${cls}`}>{badge}</span>
+    </>
+  );
+  if (approved) {
+    // Approved parts fold up to one line; open them to re-read.
+    return (
+      <details className="card beat approved-beat">
+        <summary>{head}</summary>
+        {body}
+      </details>
+    );
+  }
+  return (
+    <article className={`card beat${flagged ? " flagged" : ""}`}>
+      <h3>{head}</h3>
+      {body}
     </article>
   );
 }
 
 function ChapterFolder({
-  chapter, published, defaultOpen, onApprove, busy,
+  chapter, published, defaultOpen, onlyAttention, onApprove, busy, pendingBody,
 }: {
-  chapter: ReviewChapter; published: boolean; defaultOpen: boolean;
-  onApprove: (body: ApproveBody) => void; busy: boolean;
+  chapter: ReviewChapter; published: boolean; defaultOpen: boolean; onlyAttention: boolean;
+  onApprove: (body: ApproveBody) => void; busy: boolean; pendingBody?: ApproveBody;
 }) {
-  const waiting = chapter.beats.filter((b) => b.status !== "approved").length;
+  const total = chapter.beats.length;
+  const approvedN = chapter.beats.filter((b) => b.status === "approved").length;
+  const waiting = total - approvedN;
   const flagged = chapter.beats.filter((b) => b.flags.length && b.status !== "approved").length;
+  const badge = total === 0
+    ? "○ Not prepared"
+    : flagged ? `⚠️ ${flagged} to check` : waiting ? `⏳ ${waiting} waiting` : "✅ All approved";
+  const cls = total === 0 ? "" : flagged ? "failed" : waiting ? "preparing" : "playable";
+  const shown = onlyAttention
+    ? chapter.beats.filter((b) => b.status !== "approved" || b.flags.length > 0)
+    : chapter.beats;
   return (
     <details className="book" open={defaultOpen || undefined}>
       <summary>
-        {chapter.title}
-        <small>
-          {chapter.beats.length
-            ? `${chapter.beats.length} parts, ${waiting} waiting for approval, ${flagged} with warnings`
-            : "Not prepared yet"}
-        </small>
+        <span className="book-title">
+          {chapter.title}
+          <span className={`chip-state ${cls}`}>{badge}</span>
+        </span>
+        {total > 0 && (
+          <span className="prep">
+            <span className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={approvedN}>
+              <span className="fill" style={{ width: `${(approvedN / total) * 100}%` }} />
+            </span>
+            <span className="prep-text">{approvedN} of {total} parts approved</span>
+          </span>
+        )}
       </summary>
+      {total === 0 && (
+        <p className="note">Nothing to review yet. <Link to="/books">Prepare this chapter</Link> first.</p>
+      )}
       {waiting > 0 && !published && (
         <button
           className="secondary" disabled={busy}
           onClick={() => onApprove({ chapter_idx: chapter.idx })}
         >
-          Approve parts without a warning
+          {pendingBody && pendingBody.beat_idx === undefined && pendingBody.chapter_idx === chapter.idx
+            ? "Approving..." : "Approve parts without a warning"}
         </button>
       )}
-      {chapter.beats.map((beat) => (
+      {shown.map((beat) => (
         <BeatCard
           key={beat.idx} beat={beat} busy={busy}
+          pending={pendingBody?.chapter_idx === chapter.idx && pendingBody.beat_idx === beat.idx}
           onApprove={() => onApprove({ chapter_idx: chapter.idx, beat_idx: beat.idx })}
         />
       ))}
+      {onlyAttention && shown.length === 0 && total > 0 && (
+        <p className="note">Nothing needs attention here. 🎉</p>
+      )}
     </details>
   );
 }
@@ -143,61 +253,102 @@ export default function Review() {
   const busy = approve.isPending || publish.isPending;
   const r = review.data;
   const published = r?.status === "ready";
+  const [onlyAttention, setOnlyAttention] = useState(false);
+  const [openAll, setOpenAll] = useState<boolean | null>(null);
+  const [version, setVersion] = useState(0); // bumped so Expand/Collapse all re-applies
+  const setAll = (open: boolean) => { setOpenAll(open); setVersion((v) => v + 1); };
+
+  const beats = r?.chapters.flatMap((c) => c.beats) ?? [];
+  const approvedN = beats.filter((b) => b.status === "approved").length;
+  const waitingN = beats.length - approvedN;
+  const flaggedN = beats.filter((b) => b.flags.length && b.status !== "approved").length;
+  const stage = stageOf(r);
+  const canApproveClean = waitingN - flaggedN > 0;
 
   return (
-    <section>
+    <section className="review">
       <p className="lead">
-        For grown-ups: read what the model wrote, approve it, then publish the book so children
-        can play it.
+        Read what the model wrote, approve it, then publish the book so children can play it.
       </p>
-      {library.isSuccess && books.length === 0 && <p className="note">No books to review yet.</p>}
+      {library.isSuccess && books.length === 0 && (
+        <div className="empty">
+          <div aria-hidden="true">📝</div>
+          <p>No books to review yet. <Link to="/books">Add and prepare one</Link> first.</p>
+        </div>
+      )}
       {books.length > 0 && (
-        <label className="pick">Book
-          <select
-            value={selected ?? ""}
-            onChange={(e) => navigate(`/review/${e.target.value}`)}
-          >
-            {books.map((b) => (
-              <option key={b.id} value={b.id as number}>
-                {b.status === "ready" ? `${b.title} (published)` : b.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <BookPicker books={books} selected={selected} onSelect={(id) => navigate(`/review/${id}`)} />
       )}
       {review.error && <p className="error" role="alert">{review.error.message}</p>}
+      {review.isPending && selected !== null && <p className="note">Loading the parts...</p>}
       {r && (
         <div>
-          <div className="card">
+          <div className="card summary">
             <h2>
               {r.title}
-              <span className={`chip-state ${published ? "playable" : ""}`}>
-                {published ? "Published" : "Not published"}
-              </span>
+              <span className={`chip-state ${STAGE_CLASS[stage.stage]}`}>{STAGE_TEXT[stage.stage]}</span>
+              {!published && <span className="chip-state">Not published</span>}
             </h2>
+            {beats.length > 0 && (
+              <div className="prep">
+                <span className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={beats.length} aria-valuenow={approvedN}>
+                  <span className="fill" style={{ width: `${(approvedN / beats.length) * 100}%` }} />
+                </span>
+                <span className="prep-text">
+                  {approvedN} of {beats.length} parts approved
+                  {waitingN > 0 && ` · ${waitingN} waiting`}
+                  {flaggedN > 0 && ` · ${flaggedN} with warnings`}
+                </span>
+              </div>
+            )}
+            {published ? (
+              <p className="success">
+                🎉 Children can play this book now. <Link to="/">Open the Play tab →</Link>
+              </p>
+            ) : (
+              r.problems.length > 0 && (
+                <>
+                  <p>Before this book can be published:</p>
+                  <ul className="checklist">
+                    {r.problems.map((p) => <li key={p}><span aria-hidden="true">☐</span> {p}</li>)}
+                  </ul>
+                </>
+              )
+            )}
+          </div>
+          <div className="actionbar">
             {!published && (
               <>
-                {r.problems.length > 0 && (
-                  <>
-                    <p>Before this book can be published:</p>
-                    <ul className="problems">{r.problems.map((p) => <li key={p}>{p}</li>)}</ul>
-                  </>
-                )}
-                <div className="actions">
-                  <button className="secondary" disabled={busy} onClick={() => approve.mutate({})}>
-                    Approve every part without a warning
-                  </button>
-                  <button disabled={busy || r.problems.length > 0} onClick={() => publish.mutate()}>
-                    Publish this book
-                  </button>
-                </div>
+                <button
+                  className="secondary" disabled={busy || !canApproveClean}
+                  onClick={() => approve.mutate({})}
+                >
+                  {approve.isPending && approve.variables?.chapter_idx === undefined
+                    ? "Approving..." : "Approve every part without a warning"}
+                </button>
+                <button disabled={busy || r.problems.length > 0} onClick={() => publish.mutate()}>
+                  {publish.isPending ? "Publishing..." : "Publish this book"}
+                </button>
               </>
             )}
+            <label className="toggle">
+              <input
+                type="checkbox" checked={onlyAttention}
+                onChange={(e) => setOnlyAttention(e.target.checked)}
+              />
+              Only parts needing attention
+            </label>
+            <button className="link" onClick={() => setAll(true)}>Expand all</button>
+            <button className="link" onClick={() => setAll(false)}>Collapse all</button>
           </div>
           {r.chapters.map((chapter) => (
             <ChapterFolder
-              key={chapter.idx} chapter={chapter} published={published} busy={busy}
-              defaultOpen={chapter.beats.some((b) => b.flags.length > 0 && b.status !== "approved")}
+              key={`${chapter.idx}-${version}`} chapter={chapter} published={published} busy={busy}
+              onlyAttention={onlyAttention}
+              pendingBody={approve.isPending ? approve.variables : undefined}
+              defaultOpen={
+                openAll ?? chapter.beats.some((b) => b.flags.length > 0 && b.status !== "approved")
+              }
               onApprove={(body) => approve.mutate(body)}
             />
           ))}

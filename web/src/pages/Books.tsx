@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import BookFolder from "../components/BookFolder";
 import { useFlash } from "../flash";
@@ -68,17 +69,41 @@ export default function Books() {
     add.mutate();
   }
 
+  // Which step of the workflow the grown-up is on.
+  const real = books.filter((b) => b.id !== null);
+  const anyPrepared = real.some((b) =>
+    b.chapters.some((c) => c.state === "playable" || c.state === "prepared"));
+  const allPublished = real.length > 0 && real.every((b) => b.status === "ready");
+  const step = real.length === 0 ? 1 : allPublished ? 4 : anyPrepared ? 3 : 2;
+  const STEPS = ["Add", "Prepare", "Review", "Publish"];
+  const HINTS = [
+    "Add a book from Project Gutenberg below.",
+    "Choose “Prepare this story” on a chapter. The model writes the story parts.",
+    "Check the parts in the Review tab and approve them.",
+    "All books are published. Children can play them in the Play tab.",
+  ];
+
   return (
-    <section>
+    <section className="admin">
+      <ol className="steps" aria-label="Steps">
+        {STEPS.map((name, i) => (
+          <li key={name} className={i + 1 < step ? "done" : i + 1 === step ? "now" : ""}>
+            <span className="dot">{i + 1 < step ? "✓" : i + 1}</span> {name}
+          </li>
+        ))}
+      </ol>
       <p className="lead">
-        For grown-ups: add a book, then prepare its chapters. The model writes the story parts and
-        questions; you check them in the Review tab.
+        {HINTS[step - 1]}{" "}
+        {step === 3 && <Link to="/review">Go to Review →</Link>}
       </p>
       <details className="card add" open={adding} onToggle={(e) => setAdding(e.currentTarget.open)}>
-        <summary>Add a book from Project Gutenberg</summary>
+        <summary>＋ Add a book from Project Gutenberg</summary>
         <form className="form" autoComplete="off" onSubmit={submit}>
           <label>Gutenberg number
             <input type="number" min={1} required value={form.id} onChange={set("id")} />
+            <small>
+              The number in the book's web address, e.g. 236 for gutenberg.org/ebooks/236.
+            </small>
           </label>
           <label>Title
             <input maxLength={200} required value={form.title} onChange={set("title")} />
@@ -87,24 +112,27 @@ export default function Books() {
             <input maxLength={200} required value={form.author} onChange={set("author")} />
           </label>
           <label>Summary
-            <input maxLength={2000} value={form.summary} onChange={set("summary")} />
+            <textarea rows={3} maxLength={2000} value={form.summary} onChange={set("summary")} />
           </label>
           <label>Notes for grown-ups
-            <input maxLength={1000} value={form.notes} onChange={set("notes")} />
+            <textarea rows={2} maxLength={1000} value={form.notes} onChange={set("notes")} />
           </label>
           <label>Plain-text file (.txt)
             <input
               type="file" accept=".txt,text/plain" required
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
+            {file && <small>Chosen: {file.name}</small>}
           </label>
-          <button type="submit" disabled={busy}>Add the book</button>
+          <button type="submit" disabled={busy}>{add.isPending ? "Adding..." : "Add the book"}</button>
         </form>
       </details>
       <div className="toolbar">
-        <button className="link" onClick={() => { clear(); library.refetch(); }}>
-          Look for new books
-        </button>
+        <a
+          className="link" href="https://www.gutenberg.org/" target="_blank" rel="noopener noreferrer"
+        >
+          Look for new books ↗
+        </a>
       </div>
       {library.error && <p className="error" role="alert">{library.error.message}</p>}
       <div className="library">
@@ -116,9 +144,13 @@ export default function Books() {
         ))}
       </div>
       {library.isSuccess && books.length === 0 && (
-        <p className="note">
-          No books yet. Add one above, or put a folder in the books folder (see the README).
-        </p>
+        <div className="empty">
+          <div aria-hidden="true">📚</div>
+          <p>
+            No books yet. Add one above, or put a folder in the <b>books</b> folder (see the
+            README).
+          </p>
+        </div>
       )}
     </section>
   );
