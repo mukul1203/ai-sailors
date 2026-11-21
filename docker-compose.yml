@@ -1,0 +1,34 @@
+# App + ingestion worker. Both share one volume at /data.
+# (The DB viewer is not containerized: run `make db-viewer` on the host against ./var.)
+# Secrets come from .env (git-ignored); config.prod.env sets DATA_DIR=/data and the CA cert path.
+
+x-storyquest: &storyquest
+  image: ${IMAGE:-storyquest:latest}
+  build:
+    context: .
+    args:
+      WITH_RERANKER: ${WITH_RERANKER:-1}
+  env_file:
+    - config.prod.env
+    - .env
+  volumes:
+    - ./var:/data
+    - ./certs:/certs:ro
+    - ./books:/app/books
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *storyquest
+    ports:
+      - "8000:8000"
+    environment:
+      # The separate worker service runs ingestion, so the API doesn't start its own thread.
+      INGEST_IN_API: "false"
+
+  worker:
+    <<: *storyquest
+    command: ["storyquest", "worker"]
+    healthcheck:
+      disable: true
+

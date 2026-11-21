@@ -27,7 +27,7 @@ from storyquest.models.reranker import Reranker
 from storyquest.stores.db import connect, migrate, migrations_dir
 
 # Without the embeddings (no key, or none yet) a hybrid mode becomes its keyword twin.
-_KEYWORD_TWIN = {"M2": "M1", "M2S": "M1S", "M3": "M1", "M3S": "M1S"}
+_KEYWORD_TWIN = {"M2": "M1", "M2S": "M1S", "M3": "M1", "M3S": "M1S", "M4": "M1", "M4S": "M1S"}
 _RERANKER_TWIN = {"M4": "M2", "M4S": "M2S"}
 
 
