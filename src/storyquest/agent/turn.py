@@ -1,5 +1,10 @@
 """One child turn: guard, route, (retrieve), generate, check."""
 
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import replace
+
 from storyquest.agent.context import AgentContext
 from storyquest.agent.generate import build_messages, generate
 from storyquest.agent.grounding import schema_for, verify
@@ -17,13 +22,46 @@ from storyquest.stores.search import SearchHit
 
 def _trace(name: str, messages: list[Message], r: LLMResult) -> StepTrace:
     return StepTrace(
-        name, messages, r.text, r.prompt_tokens, r.completion_tokens, r.latency_s, r.cached
+        name,
+        messages,
+        r.text,
+        r.prompt_tokens,
+        r.completion_tokens,
+        r.latency_s,
+        r.cached,
+        r.model,
+        r.finish_reason,
     )
 
 
+@contextmanager
+def _stage(timings: dict[str, float], name: str) -> Iterator[None]:
+    """Record how long a stage of the turn took, even if it ends the turn early."""
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        timings[name] = round(time.monotonic() - start, 4)
+
+
 def run_turn(ctx: AgentContext, text: str, position: Position, *, mode: Mode) -> TurnResult:
+    started_at, start = time.time(), time.monotonic()
+    timings: dict[str, float] = {}
+    result = _run(ctx, text, position, mode, timings)
+    return replace(
+        result,
+        started_at=started_at,
+        total_latency_s=round(time.monotonic() - start, 4),
+        timings=timings,
+    )
+
+
+def _run(
+    ctx: AgentContext, text: str, position: Position, mode: Mode, timings: dict[str, float]
+) -> TurnResult:
     child = " ".join(text.split())
-    problem = check_input(child, ctx.settings.max_child_input_chars)
+    with _stage(timings, "guard"):
+        problem = check_input(child, ctx.settings.max_child_input_chars)
     if problem is not None:
         return TurnResult(REPLIES[problem], problem, mode.name)
 
@@ -32,7 +70,8 @@ def run_turn(ctx: AgentContext, text: str, position: Position, *, mode: Mode) ->
     where = ctx.where(position)
 
     try:
-        route, router_step, parsed = classify(ctx.llm, ctx.book.title, child)
+        with _stage(timings, "router"):
+            route, router_step, parsed = classify(ctx.llm, ctx.book.title, child)
     except LLMError as e:
         return TurnResult(REPLIES["error"], "error", mode.name, flags=[f"llm_error:router:{e}"])
     steps.append(router_step)
@@ -43,7 +82,8 @@ def run_turn(ctx: AgentContext, text: str, position: Position, *, mode: Mode) ->
 
     passages: list[SearchHit] = []
     if mode.retrieval:
-        passages, retrieval_flags = retrieve(ctx, mode, child, position)
+        with _stage(timings, "retrieval"):
+            passages, retrieval_flags = retrieve(ctx, mode, child, position)
         flags.extend(retrieval_flags)
         if not passages:
             flags.append("no_hits")
@@ -51,11 +91,12 @@ def run_turn(ctx: AgentContext, text: str, position: Position, *, mode: Mode) ->
 
     messages = build_messages(ctx, mode, where, child, passages)
     try:
-        result = generate(
-            ctx,
-            messages,
-            schema=schema_for(passages) if mode.grounded else None,
-        )
+        with _stage(timings, "generate"):
+            result = generate(
+                ctx,
+                messages,
+                schema=schema_for(passages) if mode.grounded else None,
+            )
     except LLMError as e:
         flags.append(f"llm_error:generate:{e}")
         return TurnResult(REPLIES["error"], "error", mode.name, steps, passages, flags)
@@ -64,14 +105,16 @@ def run_turn(ctx: AgentContext, text: str, position: Position, *, mode: Mode) ->
     reply = result.text
     evidence = ""
     if mode.grounded:
-        answer, problem, evidence = verify(reply, passages)
+        with _stage(timings, "verify"):
+            answer, problem, evidence = verify(reply, passages)
         if answer is None:
             flags.append(f"ungrounded:{problem}")
             return TurnResult(
                 REPLIES["unknown_yet"], route, mode.name, steps, passages, flags, evidence
             )
         reply = answer
-    problems = check_reply(reply, child, ctx.names, where.boundary)
+    with _stage(timings, "output_check"):
+        problems = check_reply(reply, child, ctx.names, where.boundary)
     if problems or not reply:
         flags.extend(problems or ["empty_reply"])
         reply = REPLIES["careful"]

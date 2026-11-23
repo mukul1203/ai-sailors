@@ -23,6 +23,13 @@ def _flag(value: str) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _trace_store(value: str) -> str:
+    value = value.strip().lower()
+    if value not in ("off", "summary", "full"):
+        raise ValueError(f"TRACE_STORE must be off, summary or full, not {value!r}")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     root: Path
@@ -64,6 +71,9 @@ class Settings:
     max_questions_per_session: int
     ask_min_interval_seconds: float
     api_debug: bool
+    trace_store: str  # off | summary | full
+    trace_dashboard: bool
+    trace_retention_days: float
     data_dir: Path
     api_port: int
     dbviewer_port: int
@@ -73,6 +83,7 @@ class Settings:
     embedding_base_url: str = field(repr=False)
     gemini_api_key: str = field(repr=False)
     session_secret: str = field(repr=False)
+    admin_token: str = field(repr=False)
 
 
 def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = None) -> Settings:
@@ -132,6 +143,9 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         max_questions_per_session=int(get("MAX_QUESTIONS_PER_SESSION", "10")),
         ask_min_interval_seconds=float(get("ASK_MIN_INTERVAL_SECONDS", "2")),
         api_debug=_flag(get("API_DEBUG", "false")),
+        trace_store=_trace_store(get("TRACE_STORE", "summary")),
+        trace_dashboard=_flag(get("TRACE_DASHBOARD", "false")),
+        trace_retention_days=float(get("TRACE_RETENTION_DAYS", "30")),
         data_dir=path(get("DATA_DIR", "var")),
         api_port=int(get("API_PORT", "8000")),
         dbviewer_port=int(get("DBVIEWER_PORT", "8001")),
@@ -143,4 +157,5 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         gemini_api_key=get("GEMINI_API_KEY")
         or ("" if get("EMBEDDING_BASE_URL") else get("EMBEDDING_API_KEY")),
         session_secret=get("SESSION_SECRET"),
+        admin_token=get("ADMIN_TOKEN"),
     )

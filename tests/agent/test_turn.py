@@ -115,3 +115,27 @@ def test_where_reports_the_childs_position(make_ctx: MakeCtx) -> None:
     assert early.boundary < later.boundary
     assert ctx.where(Position(999, 0)).chapter_title == "the end of the book"
     assert ctx.names["kaa"] > later.boundary
+
+
+def test_a_turn_records_when_it_ran_and_how_long_each_stage_took(make_ctx: MakeCtx) -> None:
+    result = run_turn(make_ctx(ScriptedLLM()), "Who is Tabaqui?", START, mode=get_mode("M1"))
+    assert result.started_at > 0 and result.total_latency_s >= 0
+    assert list(result.timings) == ["guard", "router", "retrieval", "generate", "output_check"]
+    assert all(s.model for s in result.steps)
+
+
+def test_a_turn_that_ends_early_still_has_its_timings(make_ctx: MakeCtx) -> None:
+    result = run_turn(
+        make_ctx(ScriptedLLM(label="off_topic")), "Pizza?", START, mode=get_mode("M1")
+    )
+    assert list(result.timings) == ["guard", "router"]
+    assert result.total_latency_s >= sum(result.timings.values()) - 0.001
+
+
+def test_the_serialiser_hides_prompts_and_text_unless_asked(make_ctx: MakeCtx) -> None:
+    result = run_turn(make_ctx(ScriptedLLM()), "Who is Tabaqui?", START, mode=get_mode("M1"))
+    short, full = result.to_dict(full=False), result.to_dict(full=True)
+    assert "messages" not in short["steps"][0] and "text" not in short["passages"][0]
+    assert full["steps"][1]["messages"] and full["passages"][0]["text"]
+    assert full["steps"][0]["cached"] is False and full["route"] == "story_question"
+    assert result.prompt_tokens == sum(s.prompt_tokens for s in result.steps)

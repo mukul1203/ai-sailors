@@ -17,7 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
 
 from storyquest.agent.modes import Mode, get_mode
-from storyquest.api import admin, library, play
+from storyquest.api import admin, library, play, traces
 from storyquest.config import Settings, load_settings
 from storyquest.ingestion.worker import run_worker
 from storyquest.models.build import build_embedder, build_llm, build_reranker
@@ -25,6 +25,7 @@ from storyquest.models.embedder import Embedder, EmbeddingError
 from storyquest.models.llm import LLMClient, LLMError
 from storyquest.models.reranker import Reranker
 from storyquest.stores.db import connect, migrate, migrations_dir
+from storyquest.stores.traces import prune_traces
 
 # Without the embeddings (no key, or none yet) a hybrid mode becomes its keyword twin.
 _KEYWORD_TWIN = {"M2": "M1", "M2S": "M1S", "M3": "M1", "M3S": "M1S", "M4": "M1", "M4S": "M1S"}
@@ -138,6 +139,8 @@ def create_app(
     for name in ("content", "app"):
         conn = connect(settings.data_dir / f"{name}.db")
         migrate(conn, migrations_dir(name))
+        if name == "app":
+            prune_traces(conn, settings.trace_retention_days)
         conn.close()
 
     @asynccontextmanager
@@ -177,6 +180,7 @@ def create_app(
 
     Content = Depends(content_conn)
     App = Depends(app_conn)
+    app.include_router(traces.build_router(settings, app_conn))
 
     @app.exception_handler(play.PlayError)
     def play_error(_: Request, e: play.PlayError) -> JSONResponse:
@@ -194,7 +198,12 @@ def create_app(
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
-        return {"status": "ok", "model": state.llm is not None, "mode": state.mode.name}
+        return {
+            "status": "ok",
+            "model": state.llm is not None,
+            "mode": state.mode.name,
+            "traces": settings.trace_dashboard,
+        }
 
     @app.get("/api/library")
     def books(content: sqlite3.Connection = Content) -> list[dict[str, Any]]:

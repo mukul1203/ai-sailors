@@ -34,6 +34,8 @@ def classify(llm: LLMClient, book_title: str, child_text: str) -> tuple[str, Ste
         result.completion_tokens,
         result.latency_s,
         result.cached,
+        result.model,
+        result.finish_reason,
     )
     try:
         label = json.loads(result.text)["label"]

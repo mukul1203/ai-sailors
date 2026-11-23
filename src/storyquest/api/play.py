@@ -7,6 +7,7 @@ comes later.
 """
 
 import json
+import logging
 import secrets
 import sqlite3
 import time
@@ -23,6 +24,9 @@ from storyquest.models.embedder import Embedder
 from storyquest.models.llm import LLMClient
 from storyquest.models.reranker import Reranker
 from storyquest.stores.content_repo import ContentRepo
+from storyquest.stores.traces import save_trace
+
+log = logging.getLogger(__name__)
 
 BACK_TO_QUEST = "Ready to go back to the quest?"
 MAX_WRONG_TRIES = 2  # after this many wrong answers the right one is shown and the quest goes on
@@ -180,12 +184,13 @@ def _event(
     reply: str = "",
     route: str = "",
     flags: list[str] | None = None,
-) -> None:
-    app.execute(
+) -> int:
+    cur = app.execute(
         "INSERT INTO session_events (session_id, kind, beat_idx, text, reply, route, flags,"
         " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (session_id, kind, beat_idx, text, reply, route, json.dumps(flags or []), time.time()),
     )
+    return cur.lastrowid or 0
 
 
 def _hint(beat: Beat, tries: int) -> str:
@@ -296,7 +301,14 @@ def ask(
     beats = _beats(content, session)
     beat = beats[session["beat_idx"]]
     result = run_turn(ctx, text, Position(session["chapter_idx"], beat.idx), mode=mode)
-    _event(app, session_id, "ask", beat.idx, text, result.reply, result.route, result.flags)
+    event_id = _event(
+        app, session_id, "ask", beat.idx, text, result.reply, result.route, result.flags
+    )
+    if settings.trace_store != "off":
+        try:  # a trace is for the grown-ups: failing to save one must never fail the child's reply
+            save_trace(app, session_id, event_id, result, settings.trace_store)
+        except Exception:
+            log.exception("could not save the trace for session %s", session_id)
     app.execute(
         "UPDATE sessions SET questions = questions + 1, updated_at = ? WHERE id = ?",
         (time.time(), session_id),

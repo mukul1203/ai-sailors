@@ -46,6 +46,7 @@ from storyquest.models.reranker import RerankerError
 from storyquest.stores.content_repo import ContentRepo
 from storyquest.stores.db import connect, migrate, migrations_dir
 from storyquest.stores.search import hybrid_search, search_chunks
+from storyquest.stores.traces import prune_traces
 
 
 def _show_config() -> int:
@@ -94,7 +95,10 @@ def _purge_sessions(args: argparse.Namespace) -> int:
     conn = connect(settings.data_dir / "app.db")
     migrate(conn, migrations_dir("app"))
     count = purge_sessions(conn, args.days)
-    print(f"Deleted {count} play session(s) not used for {args.days} days.")
+    print(f"Deleted {count} play session(s) not used for {args.days} days (their traces too).")
+    pruned = prune_traces(conn, settings.trace_retention_days)
+    print(f"Pruned {pruned} trace(s) older than {settings.trace_retention_days:g} days.")
+    print("The LLM cache directory also holds prompts; clear it too if it should not keep them.")
     return 0
 
 

@@ -119,3 +119,95 @@ export interface AddBookBody {
   content_notes: string;
   text: string;
 }
+
+// ---- Trace dashboard (src/storyquest/api/traces.py) ----
+
+export interface TraceRow {
+  id: number;
+  session_id: string;
+  created_at: number; // epoch seconds
+  mode: string;
+  route: string;
+  stored: "summary" | "full";
+  question: string;
+  total_latency_s: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached: boolean;
+  flags: string[];
+}
+
+export interface TraceList {
+  items: TraceRow[];
+  total: number;
+}
+
+export interface TraceFilters {
+  mode?: string;
+  route?: string;
+  flag?: string;
+  since?: number;
+  until?: number;
+  min_latency?: number;
+  cached?: boolean;
+}
+
+export interface TraceStats {
+  total: number;
+  by_route: Record<string, number>;
+  latency_mean_s: number;
+  latency_p95_s: number;
+  tokens_per_turn: number;
+  top_flags: { flag: string; count: number }[];
+  retrieval_miss_rate: number;
+}
+
+export interface TraceStep {
+  name: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  latency_s: number; // for a cached step: the original call's latency, not this one's
+  cached: boolean;
+  model: string;
+  finish_reason: string | null;
+  messages?: { role: string; content: string }[]; // only when stored in full
+  output?: string; // only when stored in full
+}
+
+export interface TracePassage {
+  chunk_id: number;
+  chapter: number;
+  beat: number;
+  idx: number;
+  score: number;
+  bm25_rank: number | null;
+  dense_rank: number | null;
+  rerank_rank: number | null;
+  rerank_score: number | null;
+  source: string; // "chunk" or "entity"
+  text?: string; // only when stored in full
+}
+
+export interface TraceDetail {
+  id: number;
+  session_id: string;
+  created_at: number;
+  stored: "summary" | "full";
+  question: string;
+  reply: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached: boolean;
+  trace: {
+    route: string;
+    mode: string;
+    started_at: number;
+    total_latency_s: number;
+    timings: Record<string, number>;
+    steps: TraceStep[];
+    passages: TracePassage[];
+    flags: string[];
+    evidence: string;
+  };
+  notes: { flags: Record<string, string>; pipeline: string[] };
+}

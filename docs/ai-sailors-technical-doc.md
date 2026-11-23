@@ -29,6 +29,7 @@
   - [6.2 API (`src/storyquest/api/`)](#62-api-srcstoryquestapi)
   - [6.3 Frontend (`web/`)](#63-frontend-web)
   - [6.4 Deployment](#64-deployment)
+  - [6.5 Trace dashboard](#65-trace-dashboard)
 - [7. Evaluation](#7-evaluation)
   - [7.1 Golden set](#71-golden-set)
   - [7.2 Runner and scoring](#72-runner-and-scoring)
@@ -209,7 +210,7 @@ The live agent (`src/storyquest/agent/turn.py::run_turn`) is a linear pipeline. 
 4. **Generate** (`generate.py`): the system prompt carries the title, author, chapter and beat. The child's text is wrapped in `<child_message>` markers as an injection defence. Temperature is 0.
 5. **Ground** (`grounding.py`, "S" modes): each retrieved passage is split into numbered sentences such as `[2.3]`. The model returns JSON `{evidence: [ids], answer}`, with ids restricted by an enum and at most 3. Code checks the ids. With no valid evidence the reply is "unknown yet".
 6. **Output check** (`output_check.py`, no model call): flags banned film terms (for example disney, cartoon, movie) unless the child used them, and flags names that first appear at or after the child's position. A failure produces a safe "careful" reply.
-7. **Trace** (`trace.py`): records every step, the messages, token counts, latency, cache hits, passages, flags and evidence.
+7. **Trace** (`trace.py`): records every step, the messages, token counts, latency, cache hits, passages, flags and evidence, plus the start time, total latency and the time spent in each stage. In the live app each trace is saved and shown on the trace dashboard (Section 6.5).
 
 ### 5.2 Modes compared
 
@@ -258,17 +259,19 @@ CachedClient -> ThrottledClient -> OpenAICompatibleClient
 | `GET /api/missions` | Playable chapters |
 | `POST /api/sessions`, `GET /api/sessions/{id}` | Start and resume a quest |
 | `POST /api/sessions/{id}/choice` | Answer card. No model call; two wrong tries with hints, then the answer is revealed |
-| `POST /api/sessions/{id}/ask` | Runs the live agent |
+| `POST /api/sessions/{id}/ask` | Runs the live agent and saves its trace |
+| `GET /api/admin/traces`, `/stats`, `/{id}` | Trace list with filters, summary statistics, one full trace. Off by default and token-gated (Section 6.5) |
 
 Operational limits: at most 10 questions per session and a 2-second minimum interval between questions. If the model key is missing, the sidekick reports it is "resting" while answer cards still work. Every response carries `Content-Security-Policy: default-src 'self'`, `nosniff` and `no-referrer`. API docs appear only when `API_DEBUG=true`.
 
 ### 6.3 Frontend (`web/`)
 
-Three tabs: **Play**, **Books** and **Review**.
+Four tabs: **Play**, **Books**, **Review** and **Traces**. The Traces tab appears only when the server has the trace dashboard switched on.
 
 - **Quest** page: narration, clues, vocabulary, lettered answer cards, hints, a questions-left counter, a "Read to me" button using browser speech synthesis, an ask-the-sidekick form, and resume through `localStorage`.
 - **Books** page: add a book, see chapter state, and prepare one or all chapters with progress polling.
 - **Review** page: the human-in-the-loop view, showing narration, question, cards, hints and flags; approve one beat or all clean beats; publish with blocking problems shown.
+- **Traces** page: the grown-ups' view of real questions (Section 6.5).
 
 Server text is written with `textContent` only.
 
@@ -278,6 +281,20 @@ Server text is written with `textContent` only.
 - **docker-compose:** two services, `app` and `worker`, sharing one image. `make up` starts the app.
 - **Makefile:** about 40 self-documenting targets for setup, run, quality checks (`make check` runs lint, mypy strict and tests), data, evaluation and SSH deployment.
 - **Configuration:** `config.env` (committed) is overridden by `.env` (secrets) and then by real environment variables.
+
+### 6.5 Trace dashboard
+
+Before the dashboard, the full trace of a turn existed only in the CLI and the evaluation report, which use golden-set questions. The live `/ask` handler discarded everything except the reply, route and flags. The dashboard saves and shows what happened on real questions, to support debugging, the failure taxonomy and the demo.
+
+- **Capture.** `run_turn` records its start time, total latency and per-stage timings (guard, router, retrieval, generate, verify, output check). Each model call also records its model and finish reason. A cached call keeps the latency of the original call, so the UI labels it "replayed".
+- **Storage.** `play.ask` writes one row per question to the `turn_traces` table in `app.db` (migration `0003_turn_traces.sql`). The row cascades with its session. A failure to save a trace is logged and never affects the child's reply.
+- **`TRACE_STORE`.** `summary` (default) keeps route, timings, tokens, flags and passage ids and ranks. `full` also keeps prompts, model output and passage text. `off` saves nothing.
+- **Read API.** `api/traces.py` serves a paged, filterable list (mode, route, flag, date range, minimum latency, replayed), one full trace, and statistics: counts by route, mean and p95 latency, tokens per turn, top flags and the retrieval-miss rate.
+- **Access.** Traces contain children's questions. The API returns 404 unless `TRACE_DASHBOARD=true`, and then requires the `ADMIN_TOKEN` in an `X-Admin-Token` header. An unset token admits nobody. This is a stop-gap until the app has accounts.
+- **Retention.** Traces are deleted with their session by `purge-sessions`, and traces older than `TRACE_RETENTION_DAYS` (30) are pruned at app start and by `purge-sessions`.
+- **UI.** The list page has summary tiles, filters and a table. The detail page follows the turn in order: question and route with stage timings, retrieval table (BM25, meaning and rerank ranks, score, book position), each model call (expandable prompt and output in `full` mode), grounding evidence, then flags with plain-language explanations and the reply the child saw.
+
+The dashboard already exposed a real fault: two M4S questions carried a `reranker_error` flag because `sentence-transformers` was not installed, so they were answered without reranking and should not count as M4S results.
 
 ---
 
@@ -367,7 +384,8 @@ Stored run `20261116-213024`, dev split, 47 items run (commit e9e9ae0):
 | Inappropriate content in generated beats | Safety word list, reading-level check, and a human approval gate before publish |
 | Privacy | The agent never asks for personal details; a `personal` route deflects them; sessions use random tokens |
 | Over-use | 10 questions per session, 2-second minimum interval |
-| Retention | Child text is kept in `session_events` until `storyquest purge-sessions --days N` is run |
+| Retention | Child text is kept in `session_events` until `storyquest purge-sessions --days N` is run. Traces are also pruned after `TRACE_RETENTION_DAYS` (30) |
+| Trace access | The trace dashboard is off by default and, when on, needs an admin token. Prompts and passage text are stored only with `TRACE_STORE=full` |
 
 The router and output check use no free-form generation for refusals, so a deflection cannot itself be manipulated.
 
@@ -377,9 +395,9 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Not yet built**
 
-- **Accounts and parent controls.** There is no authentication; admin routes are open. Parent profiles, child profiles, badges and per-child session caps exist only in the design docs. `SESSION_SECRET` is not yet used.
+- **Accounts and parent controls.** There is no authentication; admin routes are open, except the trace dashboard, which is gated by a shared admin token. Parent profiles, child profiles, badges and per-child session caps exist only in the design docs. `SESSION_SECRET` is not yet used.
 - **Planner, executor and critic loop.** The agent is a single linear pipeline. The non-LLM output check plays the critic's role, but there is no iterative step budget and no tool calls such as `retrieve_canon` or `award_badge`.
-- **Automated retention and PII redaction** in traces.
+- **PII redaction** in stored traces. Trace retention is automated, but the LLM disk cache also holds prompts and is not cleared by `purge-sessions`.
 - **CI.** There is no workflow; `make check` is run by hand.
 
 **Evaluation gaps**
@@ -425,6 +443,8 @@ The router and output check use no free-form generation for refusals, so a defle
 | `MAX_CHILD_INPUT_CHARS` | 300 |
 | `MAX_QUESTIONS_PER_SESSION` / `ASK_MIN_INTERVAL_SECONDS` | 10 / 2 |
 | `PLAY_MODE` | `M4S` (set in `config.env`) |
+| `TRACE_STORE` / `TRACE_DASHBOARD` / `TRACE_RETENTION_DAYS` | `summary` / `false` / 30 |
+| `ADMIN_TOKEN` | unset (in `.env`; needed to open the trace dashboard) |
 
 ## Appendix B. Common Commands
 
@@ -444,15 +464,15 @@ The router and output check use no free-form generation for refusals, so a defle
 ```
 src/storyquest/
   ingestion/   text, chapters, segment, beatgen, validate, entities, chunking, embed, pipeline
-  stores/      db, content_repo, search (FTS5 + RRF), vector, migrations
+  stores/      db, content_repo, search (FTS5 + RRF), vector, traces, migrations
   models/      llm, openai_compatible, throttle, cache, embedder, reranker, fake
   agent/       modes, turn, router, guard, retrieval, grounding, generate, output_check, trace
-  api/         main, play, library, admin
+  api/         main, play, library, admin, traces
   evaluation/  runner, scoring, judge, retrieval, report, html_report
-web/           React app (Library, Quest, Books, Review)
+web/           React app (Library, Quest, Books, Review, Traces)
 eval/          golden_v1.jsonl, Jungle Book fixture, spine beats, runs
 docs/          capstone brief, PRD, design docs 00-10
-tests/         about 273 test functions
+tests/         about 287 test functions
 ```
 
 ---

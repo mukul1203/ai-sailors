@@ -8,6 +8,10 @@ import type {
   PublishResult,
   ReviewView,
   SessionView,
+  TraceDetail,
+  TraceFilters,
+  TraceList,
+  TraceStats,
 } from "./types";
 
 export class ApiError extends Error {
@@ -18,12 +22,44 @@ export class ApiError extends Error {
   }
 }
 
+// The trace dashboard's admin token lives only for this browser tab (sessionStorage).
+const TOKEN_KEY = "storyquest.adminToken";
+
+export function getAdminToken(): string {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setAdminToken(token: string): void {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // storage blocked: the token just has to be typed again
+  }
+}
+
+function query(params: object): string {
+  const q = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "" && value !== null) q.set(key, String(value));
+  }
+  const text = q.toString();
+  return text ? `?${text}` : "";
+}
+
 async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const init: RequestInit = { method };
+  const headers: Record<string, string> = {};
   if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
+    headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
+  if (path.startsWith("/api/admin/traces")) headers["X-Admin-Token"] = getAdminToken();
+  init.headers = headers;
   let response: Response;
   try {
     response = await fetch(path, init);
@@ -39,6 +75,12 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
 }
 
 export const api = {
+  health: () => request<{ traces: boolean }>("/api/health"),
+  traces: (filters: TraceFilters, limit: number, offset: number) =>
+    request<TraceList>(`/api/admin/traces${query({ ...filters, limit, offset })}`),
+  traceStats: (filters: TraceFilters) =>
+    request<TraceStats>(`/api/admin/traces/stats${query(filters)}`),
+  trace: (id: number) => request<TraceDetail>(`/api/admin/traces/${id}`),
   missions: () => request<Mission[]>("/api/missions"),
   library: () => request<LibraryBook[]>("/api/library"),
   prepare: (bookId: number, chapterIdx: number) =>

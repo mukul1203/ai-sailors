@@ -450,3 +450,33 @@ a.tab.active { background: #fff; color: var(--green-dark); }
 }
 .kid .suggest button:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
 .kid .suggest button:disabled { opacity: 0.5; cursor: progress; }
+
+/* Trace dashboard (grown-ups only) */
+main:has(.traces) { max-width: 72rem; }
+.traces { font-size: 1rem; }
+.traces .callout { background: #fff1c7; border: 2px solid var(--sun); border-radius: 0.8rem; padding: 0.5rem 1rem; }
+.trace-tiles { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.6rem 0; }
+.trace-tile { background: var(--card); border: 2px solid var(--line); border-radius: 0.8rem; padding: 0.4rem 0.9rem; display: flex; flex-direction: column; min-width: 8rem; }
+.trace-tile b { font-size: 1.4rem; }
+.trace-tile span { font-size: 0.85rem; color: #6b6a73; }
+.trace-filters { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; margin: 0.8rem 0; }
+.trace-filters label { display: flex; flex-direction: column; font-size: 0.85rem; gap: 0.15rem; }
+.trace-filters input, .trace-filters select { font: inherit; padding: 0.3rem 0.4rem; border: 2px solid var(--line); border-radius: 0.5rem; background: #fff; }
+.trace-filters button.secondary, .trace-pager button.secondary { background: #fff; color: var(--green-dark); border: 2px solid var(--green); padding: 0.35rem 0.8rem; }
+.trace-scroll { overflow-x: auto; }
+.trace-table { border-collapse: collapse; width: 100%; font-size: 0.92rem; background: var(--card); }
+.trace-table th, .trace-table td { border-bottom: 1px solid var(--line); padding: 0.35rem 0.6rem; text-align: left; vertical-align: top; }
+.trace-table th { background: #fbf1dc; white-space: nowrap; }
+.trace-q { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-text { min-width: 20rem; max-width: 36rem; }
+.trace-flags { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.trace-flag { background: #ffe3e0; color: #a3281c; border-radius: 999px; padding: 0.05rem 0.6rem; font-size: 0.8rem; }
+.trace-pager { display: flex; gap: 1rem; align-items: center; justify-content: center; margin: 1rem 0; }
+.trace-step { border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.4rem 0.8rem; margin-bottom: 0.5rem; }
+.trace-step pre { white-space: pre-wrap; word-break: break-word; background: #faf5ea; padding: 0.6rem; border-radius: 0.5rem; font-size: 0.85rem; margin: 0.2rem 0 0.6rem; }
+.trace-step h4 { margin: 0.5rem 0 0; font-size: 0.9rem; text-transform: uppercase; color: #6b6a73; }
+.trace-evidence { margin: 0.3rem 0; padding: 0.5rem 1rem; border-left: 4px solid var(--green); background: #f3faf6; }
+.trace-notes { font-size: 0.92rem; }
+.trace-token { max-width: 26rem; }
+.trace-token label { display: flex; flex-direction: column; gap: 0.2rem; margin-bottom: 0.6rem; }
+.trace-token input { font: inherit; padding: 0.4rem; border: 2px solid var(--line); border-radius: 0.5rem; }
