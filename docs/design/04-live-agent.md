@@ -40,6 +40,27 @@ Plain Python, no agent framework (LangGraph, CrewAI or AutoGen) for the MVP.
 - Tracing is independent of the framework: every node records its inputs, outputs, tokens and latency in our own trace format, which can be exported to Langfuse or OpenTelemetry.
 - Keep nodes pure and graph-shaped (state in, state out), so a port to LangGraph later is mechanical if it starts to pay off, for example for visual graphs or checkpointing.
 
+## The agent loop (mode M5), built
+
+`agent/loop.py` implements the planner-executor-critic requirement as plain code, following the turn flow above. After the guard and router, a story question goes through:
+
+1. **Planner** (`agent/planner.py`, one call, JSON schema): rewrites the question so it stands on its own, using the session's last three story questions (`agent/memory.py`), and chooses one to three tool calls. Tool names are an enum in the schema; an unreadable plan is asked for once more, then replaced by a book search for the child's own words.
+2. **Executor** (`agent/tools.py`): runs the calls. The three tools are read-only and position-safe: the child's position comes from code, never from the model.
+
+   | Tool | Returns |
+   |---|---|
+   | `search_book(query)` | Hybrid search (keywords alone without vectors), filtered to the child's position |
+   | `lookup_character(name)` | Book passages that mention the name, then its entity card |
+   | `current_scene()` | The retelling of the beat the child is reading |
+
+   A failing or unknown tool is skipped with a `tool_error` flag. Results are merged fairly (every tool's best passage first), up to 8 passages.
+3. **Answer**: as in M2S, the model cites numbered book sentences and code checks the ids; then the existing output check (film words, later names). Only the child's own words may name a later character, so a planner rewrite cannot slip a spoiler past it.
+4. **Critic** (`agent/critic.py`, one call, JSON schema): approves only if every fact is in the cited sentences, the question is answered and the words suit the child; otherwise it names the problem and the answer is written once more with that feedback. A second rejection gives the safe "I don't know that yet".
+
+Guardrails: at most `AGENT_MAX_STEPS` (10) steps, model calls and tool calls with the router included, and `AGENT_TOKEN_BUDGET` (8,000) tokens per question; a model error gives the friendly "ask me again". The worst case (a re-asked plan, three tools, two answers, two critic calls) is exactly 10 steps. Agent tools cannot change the game: moving the story on and awarding badges stay with ordinary code, which is the human-in-the-loop boundary for anything consequential.
+
+Each turn records its tool calls (`TurnResult.tool_calls`) beside its model calls, so traces and the eval report show tool calls per question. In the eval, M5's retrieval is scored on the passages its own tools found.
+
 ## Built so far (command line, modes M0 and M1)
 
 `make ask BOOK=236 Q="..." MODE=M1 ARGS="--chapter 0 --beat 1"` runs one turn:
@@ -87,10 +108,9 @@ One pipeline, controlled by config, so evals differ only by the toggles.
 | M2 | hybrid (needs embedder) | no | no | no | no |
 | M3 | hybrid | yes | no | no | no |
 | M4 | hybrid | yes | no | yes | no |
-| M5 (later) | hybrid | yes | yes | yes | no |
-| M6 (later) | hybrid | yes | yes | yes | yes |
+| **M5** (agent loop) | the planner's tool calls (hybrid search) | via `lookup_character` | yes, by the planner | no | **yes** |
 
-The S variants (M1S, M2S, M3S, M4S) add sentence evidence: see below. Without an embedder, run the BM25-only variants. Rewrite and the critic remain deferred; reranking is opt-in and should be measured against the golden set.
+The S variants (M1S, M2S, M3S, M4S) add sentence evidence: see below. Without an embedder, run the BM25-only variants. Query rewrite and the critic are built into the agent loop (M5, above) rather than as separate modes; reranking is opt-in and should be measured against the golden set.
 
 Built so far: M0, M1, M1S (M1 with the model choosing numbered evidence sentences), the hybrid modes M2 and M2S, the entity-card modes M3 and M3S, and the cross-encoder modes M4 and M4S. M4/M4S retrieve the configured candidate pool with hybrid search, rerank only those position-filtered book chunks, then add eligible entity cards. The cross encoder is optional (`RERANKER_PROVIDER=cross_encoder`); scoring failures preserve the original order and set `reranker_error`. The earlier dev-split measurements were M2S 72% (34/47), M3S 68% (32/47); reranking needs a fresh eval against the golden set before it is selected for play.
 

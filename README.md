@@ -149,6 +149,7 @@ The same agent code runs every mode; only the settings differ.
 | M2 | hybrid: keyword plus meaning, fused by reciprocal rank fusion | no | yes |
 | M2S | hybrid | yes | yes |
 | M3 / M3S | hybrid, plus entity cards for named characters, places and terms | no / yes | yes, and `make ingest-llm` for the cards |
+| M5 | **agent loop**: a planner chooses tools (search the book, look up a name, read the scene), then a critic checks the answer; remembers the session's last questions | yes | no: its search uses keywords alone without it |
 
 M2S is the best mode (72% on the dev split in an earlier run; 66% in the comparison below, on the
 same machine and code for every row). M3S, the entity-card variant, scored 68% in its first
