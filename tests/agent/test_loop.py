@@ -48,7 +48,9 @@ def test_plan_tools_answer_and_critic_in_order(make_ctx: MakeCtx) -> None:
     ]
     assert result.passages and result.evidence  # the answer cites a real book sentence
     assert set(result.timings) >= {"router", "planner", "tools", "generate", "critic"}
-    assert "<book_sentences>" in llm.prompts("critic")[0]
+    critic_input = llm.prompts("critic")[0]
+    assert "<book_sentences>" in critic_input
+    assert result.passages[0].text in critic_input  # the cited sentences come with their passages
 
 
 def test_other_messages_still_get_their_fixed_reply_without_planning(make_ctx: MakeCtx) -> None:

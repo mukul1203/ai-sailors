@@ -49,9 +49,20 @@ def parse_critique(raw: str) -> Critique | None:
 
 
 def review(
-    llm: LLMClient, book_title: str, where: Where, question: str, evidence: str, answer: str
+    llm: LLMClient,
+    book_title: str,
+    where: Where,
+    question: str,
+    passages: str,
+    evidence: str,
+    answer: str,
 ) -> tuple[Critique | None, StepTrace]:
-    """One critic call. Returns the critique (None if unreadable) and the trace of the call."""
+    """One critic call. Returns the critique (None if unreadable) and the trace of the call.
+
+    `evidence` is the sentences the answer cites and `passages` the passages it was written from:
+    a cited "He has been lame in one foot" says nothing about who "he" is until it is read in
+    its passage, and without that the critic once approved "Mowgli limps" for Shere Khan's limp.
+    """
     system = load_prompt("critic").format(
         title=book_title,
         chapter=where.chapter_title,
@@ -59,6 +70,7 @@ def review(
     )
     content = (
         f"<question>\n{question}\n</question>\n"
+        f"<passages>\n{passages}\n</passages>\n"
         f"<book_sentences>\n{evidence}\n</book_sentences>\n"
         f"<answer>\n{answer}\n</answer>"
     )

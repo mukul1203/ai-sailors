@@ -170,7 +170,8 @@ class _Run:
         if feedback:
             messages[-1]["content"] += (
                 "\n\nA reviewer checked your last answer and found a problem: "
-                f"{feedback}\nWrite a new answer that fixes it."
+                f"{feedback}\nWrite a new answer that fixes it. Say less rather than add "
+                "anything the cited sentences do not say."
             )
         with timed(self.timings, "generate"):
             result = generate(self.ctx, messages, schema=schema_for(self.passages))
@@ -189,7 +190,13 @@ class _Run:
         try:
             with timed(self.timings, "critic"):
                 critique, step = review(
-                    self.ctx.llm, self.ctx.book.title, where, question, evidence, answer
+                    self.ctx.llm,
+                    self.ctx.book.title,
+                    where,
+                    question,
+                    "\n\n".join(p.text for p in self.passages),
+                    evidence,
+                    answer,
                 )
         except LLMError as e:
             self.flags.append(f"llm_error:critic:{e}")
