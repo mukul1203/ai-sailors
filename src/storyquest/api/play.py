@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from storyquest.agent.context import AgentError, load_context
+from storyquest.agent.memory import recent_turns
 from storyquest.agent.modes import Mode
 from storyquest.agent.turn import run_turn
 from storyquest.config import Settings
@@ -300,7 +301,9 @@ def ask(
         raise PlayError(503, "not_ready", str(e)) from e
     beats = _beats(content, session)
     beat = beats[session["beat_idx"]]
-    result = run_turn(ctx, text, Position(session["chapter_idx"], beat.idx), mode=mode)
+    history = recent_turns(app, session_id) if mode.agentic else []
+    position = Position(session["chapter_idx"], beat.idx)
+    result = run_turn(ctx, text, position, mode=mode, history=history)
     event_id = _event(
         app, session_id, "ask", beat.idx, text, result.reply, result.route, result.flags
     )

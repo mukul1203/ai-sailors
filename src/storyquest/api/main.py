@@ -89,6 +89,8 @@ def _choose_mode(
     reranker: Reranker | None = None,
 ) -> Mode:
     mode = get_mode(settings.play_mode)
+    if mode.agentic:  # its search tool uses keywords alone when there are no vectors
+        return mode
     if mode.hybrid and embedder is None:
         return get_mode(_KEYWORD_TWIN[mode.name])
     if mode.rerank and reranker is None:
