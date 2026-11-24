@@ -24,6 +24,8 @@
   - [5.1 Turn flow](#51-turn-flow)
   - [5.2 Modes compared](#52-modes-compared)
   - [5.3 Why grounded answers](#53-why-grounded-answers)
+  - [5.4 The agent loop (M5)](#54-the-agent-loop-m5)
+  - [5.5 What we did to compensate for a small model](#55-what-we-did-to-compensate-for-a-small-model)
 - [6. Model Layer, API, UI and Deployment](#6-model-layer-api-ui-and-deployment)
   - [6.1 Model layer (`src/storyquest/models/`)](#61-model-layer-srcstoryquestmodels)
   - [6.2 API (`src/storyquest/api/`)](#62-api-srcstoryquestapi)
@@ -50,7 +52,7 @@ StoryQuest Copilot is a parent-approved, book-grounded storytelling game for chi
 
 Those free-text questions are answered by a retrieval-augmented agent. It uses hybrid retrieval (BM25 plus dense embeddings, fused with reciprocal rank fusion, optionally reranked by a cross-encoder), a spoiler filter enforced inside the SQL query, a router that deflects unsafe or off-topic input, sentence-level grounded answers, and a rule-based output check. The generator is Qwen3-8B on a shared hosted endpoint, so the design compensates for a small model with code-side checks instead of larger prompts.
 
-On an 80-item golden set (47 dev items run), a no-retrieval baseline (M0) passed 49%. The grounded retrieval modes (M1S, M2S) passed 64%. Embedding scene context raised gold-passage recall from 15/23 (keyword only) to 20/23. Section 7 explains the measurement limits.
+An agent mode (M5) adds a planner that chooses among three read-only, position-safe tools, a critic that checks each answer against the passages it cites, session memory for follow-up questions, and step and token caps. On an 80-item golden set (47 dev items run), a no-retrieval baseline (M0) passed 49%. Embedding scene context raised gold-passage recall from 15/23 (keyword only) to 20/23, and a cross-encoder reranker improved the top 3 but not the top 6 the answer is written from. **[TBD: headline pass rates of M2S, M4S and M5 on dev and test, from `make final-eval` on the course endpoint.]** Section 7 explains the measurement limits.
 
 ---
 
@@ -191,16 +193,23 @@ Measured on the dev split, mode M2S, top 6, over 23 questions that have a gold p
 Findings:
 
 - Scene context is the largest single improvement for the course embedding model.
-- A top-k of 8 found 32/47 facts but cost 19% more prompt tokens, so k stayed at 6.
+- With a top-k of 8, M2S passed 32/47 items (against 31/47 at 6) while facts' evidence found stayed at 42/47, for 19% more prompt tokens; one item is within noise, so k stayed at 6.
 - Tuning RRF k and the candidate count changed nothing.
 - A difference of one or two questions is noise at this sample size.
-- **No reranker (M4/M4S) numbers have been recorded yet.** The reranker is implemented and tested, but its effect is unmeasured. This should be run before submission with `make eval-retrieval` and `make eval MODES="M2S M4S" SPLIT=dev`.
+- **Reranker (M4/M4S), retrieval measured.** `make eval-retrieval` (dev split, bge-small with scene context, cross-encoder `ms-marco-MiniLM-L-6-v2` reordering hybrid search's 20 candidates; no chat model involved, so these numbers are final):
+
+  | Dev split: gold passages · facts' evidence | @3 | @6 (the answer reads 6) | @10 |
+  |---|---|---|---|
+  | Hybrid (M2/M2S) | 16/23 · 32/47 | **20/23 · 42/47** | 23/23 · 47/47 |
+  | Hybrid then reranked (M4/M4S) | **19/23 · 36/47** | 20/23 · 39/47 | 21/23 · 44/47 |
+
+  The reranker puts a gold passage in the top 3 more often, but at the top 6 the answer is written from it finds the same passages and three fewer facts. On retrieval alone it does not justify being the default play mode. **[TBD: M4S end-to-end pass rate from `make final-eval`.]**
 
 ---
 
 ## 5. Agent Design
 
-The live agent (`src/storyquest/agent/turn.py::run_turn`) is a linear pipeline. Every decision that can be made by code is made by code, because the generator is an 8B model with an 8,192-token window.
+A turn (`src/storyquest/agent/turn.py::run_turn`) takes one of two paths after the guard and router. Modes M0 to M4S run the linear pipeline below. Mode M5 runs the agent loop (Section 5.4): a planner chooses tools, an executor runs them, and a critic checks the answer. In both, every decision that can be made by code is made by code, because the generator is an 8B model with an 8,192-token window.
 
 ### 5.1 Turn flow
 
@@ -223,12 +232,63 @@ The live agent (`src/storyquest/agent/turn.py::run_turn`) is a linear pipeline. 
 | M2S | yes | yes | | | yes |
 | M3 / M3S | yes | yes | yes | | S only |
 | M4 / M4S | yes | yes | yes | yes | S only |
+| M5 (agent loop) | the planner's tool calls (hybrid search, always including the question itself) | via `lookup_character` | | | yes |
 
 The API degrades gracefully when a resource is missing: M2/M3/M4 fall back to M1, the S modes to M1S, and M4/M4S to M2/M2S when no reranker is installed (`api/main.py::_choose_mode`).
 
 ### 5.3 Why grounded answers
 
 Free-form answers from a small model can sound right while stating something the book does not say. The grounded modes make the model cite sentence ids, and code verifies that the ids exist. This turns "is the answer supported?" from a judgement into a check. The trade-off is a higher "unknown yet" rate when retrieval misses the passage.
+
+### 5.4 The agent loop (M5)
+
+The template asks for a tool-using agent with an explicit planner→executor→critic loop, persistent state across turns, and error handling for tool failures, malformed JSON, infinite loops and token budgets. Mode M5 (`src/storyquest/agent/loop.py`) implements this in plain Python, after the same guard and router as the other modes:
+
+```
+router ─▶ planner ─▶ tools (1 to 3) ─▶ answer ─▶ code checks ─▶ critic ─▶ reply
+                                         ▲                       │
+                                         └──── one revision ◀────┘
+```
+
+1. **Planner** (`planner.py`, one call, JSON schema with tool names as an enum): rewrites the question so it stands on its own, using the session's last three story questions (`memory.py`), and chooses one to three tool calls.
+2. **Executor** (`tools.py`): runs the question search plus the planner's calls. The tools are read-only and position-safe; the child's position is passed in by code, never chosen by the model.
+
+   | Tool | Returns |
+   |---|---|
+   | `search_book(query)` | Hybrid search, filtered to what the child has read (keywords alone without vectors) |
+   | `lookup_character(name)` | Book passages that mention the name, then its entity card |
+   | `current_scene()` | The retelling of the beat the child is reading |
+
+3. **Answer**: as in M2S, the model cites numbered sentences and code checks the ids; then the film-word and later-name checks. Only the child's own words may name a later character, so a planner rewrite cannot slip a spoiler past the check.
+4. **Critic** (`critic.py`, one call, JSON schema): reads each cited sentence inside its passage and approves only if every fact is in the cited sentences, about the same character, answers the question, and suits a child. Otherwise it names the problem and the answer is written once more with that feedback; a second rejection gives "I don't know that yet".
+
+**Guardrails.** At most 10 steps (model and tool calls, router included) and 8,000 tokens per question; an unreadable plan is asked for once more, then replaced by a plain search; a failing tool is skipped (`tool_error`); a model error gives a friendly "ask me again". The worst case is exactly 10 steps. Tools cannot change the game: moving the story on and awarding badges stay with ordinary code, which is the human-in-the-loop boundary for anything consequential.
+
+**State.** Memory is the session's last three story questions and replies, read from `session_events`. Messages the router labelled feelings, unsafe or personal are never remembered, so they never reach a later prompt.
+
+**Observability.** Each turn records its tool calls beside its model calls; the trace dashboard shows them with per-stage timings (planner, tools, generate, critic), and the eval reports tool calls per question.
+
+**Testing.** 37 tests run the loop end to end on the Jungle Book with a scripted model, one per path and guardrail (critic revision and rejection, unreadable plan, failing tool, model errors, step cap, token budget, spoiler names, memory over the API). The prompts were then checked on a real Qwen3-8B (local, see 5.5): router labels 6/6, planner rewrites of follow-ups 5/5, and the critic rejected an invented "a hunter shot him" answer.
+
+**Results.** [TBD: M5 against M2S on dev and test, from `make final-eval` on the course endpoint.] A local preview (same Qwen3-8B through Ollama, Gemini embeddings because the course endpoints were down; development numbers, not results) gave M5 32/47 against M2S's 30/47, answered 8/13 in-chapter questions against 6/13, and had 18/20 fully supported replies against 14/20, at about 3.3 model calls, 1.7 tool calls and 2,250 prompt tokens per question against 1.7 calls and 1,000 tokens.
+
+### 5.5 What we did to compensate for a small model
+
+The template grades this question directly. Each row is a weakness we observed in Qwen3-8B and what the system does about it.
+
+| Weakness observed | What we did | Evidence |
+|---|---|---|
+| Invents facts, or blends in the Disney film | Grounded answers cite sentence ids that code checks; film words are blocked by code; the M5 critic rejects facts not in the cited sentences | M0 49% vs grounded modes; DIS category; M5 18/20 supported replies (preview) |
+| Long, mixed passages confuse it | 500-character chunks, top 6 instead of 1,200 characters, top 3; scene context in the vectors instead of in the passage | Section 4.5 |
+| Loses track of whole chapters (8,192-token window) | Ingestion works in windows of paragraph openings and one small call per beat | Section 3 |
+| Malformed or off-schema JSON | Every structured call uses a JSON schema with enums (router labels, planner tools, critic verdicts); unreadable output is retried, then a safe default | Router 6/6 on a real model |
+| Chooses poor searches | The question itself is always searched first; the planner can only add calls | A lone name lookup cut gold-passage recall from 22/23 to 15/23 in a preview; restored to 21/23 |
+| Reads a cited "he" without knowing who it is | The critic sees each cited sentence inside its passage | The critic had approved "Mowgli limps" for Shere Khan's limp; fixed |
+| Resolves "he" to the main character | Planner rule: a pronoun usually means the character in the previous question | Follow-up rewrites 5/5 after the rule |
+| Loops or runs long | 10-step and 8,000-token caps; one critic revision | Tests for each cap |
+| The same model judges its own answers | Deterministic checks first, claim-level judging, hand review recommended | Section 7 |
+
+Local development used the same Qwen3-8B through Ollama with thinking switched off, because the course model answers without thinking; only runs on the course endpoint are reported as results.
 
 ---
 
@@ -292,7 +352,7 @@ Before the dashboard, the full trace of a turn existed only in the CLI and the e
 - **Read API.** `api/traces.py` serves a paged, filterable list (mode, route, flag, date range, minimum latency, replayed), one full trace, and statistics: counts by route, mean and p95 latency, tokens per turn, top flags and the retrieval-miss rate.
 - **Access.** Traces contain children's questions. The API returns 404 unless `TRACE_DASHBOARD=true`, and then requires the `ADMIN_TOKEN` in an `X-Admin-Token` header. An unset token admits nobody. This is a stop-gap until the app has accounts.
 - **Retention.** Traces are deleted with their session by `purge-sessions`, and traces older than `TRACE_RETENTION_DAYS` (30) are pruned at app start and by `purge-sessions`.
-- **UI.** The list page has summary tiles, filters and a table. The detail page follows the turn in order: question and route with stage timings, retrieval table (BM25, meaning and rerank ranks, score, book position), each model call (expandable prompt and output in `full` mode), grounding evidence, then flags with plain-language explanations and the reply the child saw.
+- **UI.** The list page has summary tiles, filters and a table. The detail page follows the turn in order: question and route with stage timings, retrieval table (BM25, meaning and rerank ranks, score, book position), each model call (expandable prompt and output in `full` mode), grounding evidence, then flags with plain-language explanations and the reply the child saw. For the agent mode (M5) it also lists the tools the agent ran, with what each asked for and found, and times the planner, tools and critic.
 
 The dashboard already exposed a real fault: two M4S questions carried a `reranker_error` flag because `sentence-transformers` was not installed, so they were answered without reranking and should not count as M4S results.
 
@@ -351,6 +411,10 @@ The LLM judge makes three separate calls per item:
 
 ### 7.4 Results
 
+**[TBD: replace this section with `eval/runs/final-<time>/tables.md` from `make final-eval`, run once on the course endpoint: M2S, M4S and M5 on the dev split, then the test split once.]**
+
+The run below is kept for the record but should not be quoted. Its M1S and M2S summaries are identical, and its gold-passage figure for M2S (15/23) is exactly the keyword-only figure; with scene context M2S finds 20/23 (Section 4.5). The machine that ran it most likely had no scene-context vectors yet, so M2S fell back to keyword search (flag `no_vectors`).
+
 Stored run `20261116-213024`, dev split, 47 items run (commit e9e9ae0):
 
 | Mode | Pass rate | Judge recall (mean) | Notes |
@@ -386,6 +450,7 @@ Stored run `20261116-213024`, dev split, 47 items run (commit e9e9ae0):
 | Over-use | 10 questions per session, 2-second minimum interval |
 | Retention | Child text is kept in `session_events` until `storyquest purge-sessions --days N` is run. Traces are also pruned after `TRACE_RETENTION_DAYS` (30) |
 | Trace access | The trace dashboard is off by default and, when on, needs an admin token. Prompts and passage text are stored only with `TRACE_STORE=full` |
+| Agent actions (M5) | The agent's tools are read-only and position-safe: the child's position comes from code, never from the model, and only the child's own words may name a later character. Moving the story on and awarding badges stay with code, the human-in-the-loop boundary for consequential actions |
 
 The router and output check use no free-form generation for refusals, so a deflection cannot itself be manipulated.
 
@@ -396,13 +461,13 @@ The router and output check use no free-form generation for refusals, so a defle
 **Not yet built**
 
 - **Accounts and parent controls.** There is no authentication; admin routes are open, except the trace dashboard, which is gated by a shared admin token. Parent profiles, child profiles, badges and per-child session caps exist only in the design docs. `SESSION_SECRET` is not yet used.
-- **Planner, executor and critic loop.** The agent is a single linear pipeline. The non-LLM output check plays the critic's role, but there is no iterative step budget and no tool calls such as `retrieve_canon` or `award_badge`.
+- **Agent cost and strictness (M5).** About three model calls and over 2,000 prompt tokens per question against under 1,000 for M2S, which on the shared one-request endpoint means several seconds per question; and the critic sometimes rejects an acceptable answer (it fails safe, with "I don't know that yet").
 - **PII redaction** in stored traces. Trace retention is automated, but the LLM disk cache also holds prompts and is not cleared by `purge-sessions`.
 - **CI.** There is no workflow; `make check` is run by hand.
 
 **Evaluation gaps**
 
-- Reranker modes M4/M4S have no recorded results, even though `config.env` sets `PLAY_MODE=M4S`.
+- The reranker's retrieval effect is measured (Section 4.5) and does not help at the top 6; its end-to-end pass rate is still to come from `make final-eval`, although `config.env` sets `PLAY_MODE=M4S`.
 - One chapter of one book; the test split is unreported; five items are skipped.
 - The capstone brief suggests a corpus of 500–2,000 documents, and only the Jungle Book fixture is committed. Ingestion of other books is supported but not evaluated.
 - The judge is the same model as the generator, and its thresholds are hand-picked.
@@ -418,7 +483,7 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Next steps**
 
-1. Run `make eval` for M4S on dev and test splits and report the reranker's effect.
+1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once) and fill the [TBD] numbers in the abstract, 4.5, 5.4 and 7.4; then choose the play mode from them.
 2. Add a second book and a second eval fixture.
 3. Add a small authenticated parent area and automated session purging.
 4. Replace the same-model judge, or add a human-labelled subset to calibrate it.
@@ -456,7 +521,9 @@ The router and output check use no free-form generation for refusals, so a defle
 | Run the app locally | `make dev-api` (http://localhost:8000) |
 | Run in containers | `make up` |
 | Ingest a book | `make ingest-llm`, `make review`, `make approve`, `make publish` |
-| Evaluate | `make eval`, `make eval-retrieval`, `make eval-report` |
+| Evaluate | `make eval`, `make eval-retrieval` (retrieval only, no chat model), `make eval-report` |
+| Every report number at once | `make final-eval` (checks the endpoints answer first) |
+| Try the agent | `make ask BOOK=236 Q="..." MODE=M5 ARGS="--chapter 0 --beat 1"` |
 | Quality gate | `make check` |
 
 ## Appendix C. Repository Map
