@@ -1,24 +1,20 @@
 """Mode M5 in the game: session memory over the API, and no downgrade without embeddings."""
 
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from llm_helpers import AgentLLM, plan
-from storyquest.agent.context import AgentContext
 from storyquest.api.main import create_app
 from storyquest.catalog.importer import import_books
 from storyquest.config import Settings, load_settings
 from storyquest.ingestion.pipeline import run_deterministic
-from storyquest.models.llm import LLMClient
 from storyquest.stores.content_repo import ContentRepo
 from storyquest.stores.db import connect, migrate, migrations_dir
 
 pytestmark = pytest.mark.integration
 
-MakeCtx = Callable[[LLMClient], AgentContext]
 BOOK = 236
 
 
