@@ -388,9 +388,15 @@ def _eval_retrieval(args: argparse.Namespace) -> int:
             print(f"note: keyword search only ({e})")
             embedder = None
         # Retrieval needs no chat model: the fake one is never called.
-        ctx = load_context(conn, FakeClient(), settings, args.book, embedder)
+        reranker = None
+        if settings.reranker_provider not in ("", "none"):
+            try:
+                reranker = build_reranker(settings)
+            except RerankerError as e:
+                print(f"note: no reranking ({e})")
+        ctx = load_context(conn, FakeClient(), settings, args.book, embedder, reranker=reranker)
         rows = retrieval_recall(ctx, load_cleaned(settings.data_dir, ctx.book), items, ks)
-    except (AgentError, EmbeddingError, ValueError) as e:
+    except (AgentError, EmbeddingError, RerankerError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     if not rows:

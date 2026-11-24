@@ -12,6 +12,7 @@ from storyquest.ingestion.embed import embed_book
 from storyquest.ingestion.pipeline import load_cleaned
 from storyquest.models.embedder import FakeEmbedder
 from storyquest.models.llm import LLMClient
+from storyquest.models.reranker import FakeReranker
 
 pytestmark = pytest.mark.integration
 
@@ -55,3 +56,14 @@ def test_meaning_and_hybrid_run_once_the_book_has_vectors(
     rows = retrieval_recall(replace(ctx, embedder=fake), cleaned, dev_items(eval_dir), [6])
     assert [r.method for r in rows] == ["bm25", "dense", "hybrid"]
     assert "fake:64" in render_recall(rows, top_k=6, embedding=fake.model_id)
+
+
+def test_with_a_reranker_the_hybrid_pool_is_reranked_too(make_ctx: MakeCtx, eval_dir: Path) -> None:
+    ctx = make_ctx(ScriptedLLM())
+    fake = FakeEmbedder()
+    embed_book(ctx.conn, fake, ctx.book.id)
+    reranking = replace(ctx, embedder=fake, reranker=FakeReranker())
+    cleaned = load_cleaned(ctx.settings.data_dir, ctx.book)
+    rows = retrieval_recall(reranking, cleaned, dev_items(eval_dir), [3, 6])
+    assert [r.method for r in rows if r.k == 6] == ["bm25", "dense", "hybrid", "rerank"]
+    assert "rerank" in render_recall(rows, top_k=6, embedding=fake.model_id)

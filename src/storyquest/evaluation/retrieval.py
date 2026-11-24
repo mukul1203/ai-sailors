@@ -2,8 +2,9 @@
 
 The capstone asks for retrieval recall@k measured apart from answer quality, because a weak
 generator can hide a good search (or a lucky answer can hide a bad one). This runs the same
-position-filtered searches the agent uses, keyword, meaning and hybrid, for several k at once,
-so chunking and embedding experiments take seconds instead of a full eval run.
+position-filtered searches the agent uses, keyword, meaning, hybrid and (with a reranker) hybrid
+then reranked, as in M4/M4S, for several k at once, so chunking, embedding and reranking
+experiments take seconds instead of a full eval run.
 """
 
 from collections.abc import Sequence
@@ -15,7 +16,7 @@ from storyquest.ingestion.text import Cleaned
 from storyquest.stores.search import hybrid_search, search_chunks
 from storyquest.stores.vector import dense_search, has_vectors
 
-METHODS = ("bm25", "dense", "hybrid")
+METHODS = ("bm25", "dense", "hybrid", "rerank")
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,8 @@ def _ranked(
             ctx.conn, book, vector, item.position, ctx.embedder.model_id, limit=depth
         )
         return [chunk_id for chunk_id, _ in found]
+    # As in M4/M4S, the reranker reorders the hybrid search's whole candidate pool.
+    pool = s.retrieval_candidates if method == "rerank" else depth
     hits = hybrid_search(
         ctx.conn,
         book,
@@ -55,18 +58,21 @@ def _ranked(
         vector,
         ctx.embedder.model_id,
         item.position,
-        limit=depth,
+        limit=pool,
         candidates=s.retrieval_candidates,
         rrf_k=s.rrf_k,
     )
-    return [h.chunk_id for h in hits]
+    if method == "rerank":
+        assert ctx.reranker is not None
+        hits = ctx.reranker.rerank(item.input, hits)
+    return [h.chunk_id for h in hits[:depth]]
 
 
 def retrieval_recall(
     ctx: AgentContext, cleaned: Cleaned, items: Sequence[GoldItem], ks: Sequence[int]
 ) -> list[RecallRow]:
     """Recall at each k for every search method the context can run (meaning and hybrid need
-    the embedder and the book's vectors for it)."""
+    the embedder and the book's vectors for it; rerank needs a reranker as well)."""
     items = measurable(items)
     ks = sorted(set(ks))
     depth = ks[-1]
@@ -84,7 +90,7 @@ def retrieval_recall(
     methods = ["bm25"]
     vectors: list[list[float] | None] = [None] * len(items)
     if ctx.embedder is not None and has_vectors(ctx.conn, ctx.book.id, ctx.embedder.model_id):
-        methods += ["dense", "hybrid"]
+        methods += ["dense", "hybrid"] + (["rerank"] if ctx.reranker is not None else [])
         vectors = list(ctx.embedder.embed([i.input for i in items], query=True))
 
     rows = []
