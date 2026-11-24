@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from storyquest.models.llm import Message
+from storyquest.models.llm import LLMResult, Message
 from storyquest.stores.search import SearchHit
 
 
@@ -37,6 +37,21 @@ class StepTrace:
     cached: bool
     model: str = ""
     finish_reason: str | None = None
+
+    @classmethod
+    def of(cls, name: str, messages: list[Message], result: LLMResult) -> "StepTrace":
+        """The trace of a model call that has just returned `result`."""
+        return cls(
+            name,
+            messages,
+            result.text,
+            result.prompt_tokens,
+            result.completion_tokens,
+            result.latency_s,
+            result.cached,
+            result.model,
+            result.finish_reason,
+        )
 
     def to_dict(self, *, full: bool) -> dict[str, Any]:
         out: dict[str, Any] = {
