@@ -14,6 +14,7 @@ from storyquest.agent.context import AgentContext
 from storyquest.agent.modes import MODES, Mode
 from storyquest.agent.replies import REPLIES
 from storyquest.agent.retrieval import retrieve
+from storyquest.agent.trace import TurnResult
 from storyquest.agent.turn import run_turn
 from storyquest.evaluation.items import GoldItem
 from storyquest.evaluation.judge import evidence_text, judge_item, needs_judging
@@ -40,20 +41,24 @@ def _plain_hits(ctx: AgentContext, item: GoldItem, mode: Mode) -> list[SearchHit
     return retrieve(ctx, mode, item.input, item.position)[0]
 
 
-def _retrieval_hit(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) -> bool | None:
-    """Did the mode's search put the gold lines in the top passages? Independent of the model."""
+def _searched(ctx: AgentContext, item: GoldItem, mode: Mode, result: TurnResult) -> list[SearchHit]:
+    """The passages to score retrieval on. The agent chooses its own searches, so for M5 that
+    is what its tools found; the other modes run one search for the question, independent of
+    the model (so retrieval is measured in M0 too)."""
+    return result.passages if mode.agentic else _plain_hits(ctx, item, mode)
+
+
+def _retrieval_hit(cleaned: Cleaned, item: GoldItem, hits: list[SearchHit]) -> bool | None:
+    """Did the search put the gold lines among the passages? None if the item has none."""
     if not item.gold_lines or not item.input.strip():
         return None
-    return any(_hit_has_gold(cleaned, item, h) for h in _plain_hits(ctx, item, mode))
+    return any(_hit_has_gold(cleaned, item, h) for h in hits)
 
 
-def _facts_found(
-    ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode
-) -> list[bool] | None:
-    """For each expected fact, did the mode's search find a passage that holds its evidence?"""
+def _facts_found(cleaned: Cleaned, item: GoldItem, hits: list[SearchHit]) -> list[bool] | None:
+    """For each expected fact, did the search find a passage that holds its evidence?"""
     if not item.fact_lines or not item.input.strip():
         return None
-    hits = _plain_hits(ctx, item, mode)
     return [any(_overlaps(cleaned, ranges, h) for h in hits) for ranges in item.fact_lines]
 
 
@@ -74,7 +79,8 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
     if item.skip:
         return row
     result = run_turn(ctx, item.input, item.position, mode=mode)
-    score = score_item(item, result, _retrieval_hit(ctx, cleaned, item, mode))
+    hits = _searched(ctx, item, mode, result)
+    score = score_item(item, result, _retrieval_hit(cleaned, item, hits))
     row.update(
         route=result.route,
         reply=result.reply,
@@ -84,10 +90,11 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
         unchecked=score.unchecked,
         fact_coverage=score.fact_coverage,
         retrieval_hit=score.retrieval_hit,
-        fact_found=_facts_found(ctx, cleaned, item, mode),
+        fact_found=_facts_found(cleaned, item, hits),
         passed=score.passed,
         label=score.label,
         calls=len(result.steps),
+        tool_calls=len(result.tool_calls),
         prompt_tokens=sum(s.prompt_tokens for s in result.steps),
         completion_tokens=sum(s.completion_tokens for s in result.steps),
         latency_s=round(sum(s.latency_s for s in result.steps), 2),

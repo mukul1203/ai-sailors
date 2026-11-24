@@ -73,6 +73,7 @@ def summarize(config: Row, rows: list[Row]) -> str:
     if ran:
         out.append(
             f"Per item: {mean(r['calls'] for r in ran):.1f} model calls, "
+            f"{mean(r.get('tool_calls', 0) for r in ran):.1f} tool calls, "
             f"{mean(r['prompt_tokens'] for r in ran):.0f} prompt + "
             f"{mean(r['completion_tokens'] for r in ran):.0f} completion tokens, "
             f"{mean(r['latency_s'] for r in ran):.1f}s"

@@ -23,6 +23,9 @@ def render_turn(
             out.append(
                 f"  ch{h.chapter_idx} B{h.beat_idx + 1}.{h.idx}  score {h.score:.2f}  {snippet}…"
             )
+    for t in result.tool_calls:
+        problem = f"  error: {t.error}" if t.error else ""
+        out.append(f"Tool {t.tool}({t.argument!r}) found {t.found}{problem}")
     out += ["", f"Reply: {result.reply}", ""]
     for s in result.steps:
         cached = " (cached)" if s.cached else ""
