@@ -64,6 +64,8 @@ class Settings:
     embedding_context_chars: int
     embedding_query_prefix: str
     generation_max_tokens: int
+    agent_max_steps: int
+    agent_token_budget: int
     max_child_input_chars: int
     books_dirs: tuple[Path, ...]
     ingest_in_api: bool
@@ -134,6 +136,8 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         embedding_context_chars=int(get("EMBEDDING_CONTEXT_CHARS", "0")),
         embedding_query_prefix=get("EMBEDDING_QUERY_PREFIX"),
         generation_max_tokens=int(get("GENERATION_MAX_TOKENS", "200")),
+        agent_max_steps=int(get("AGENT_MAX_STEPS", "10")),
+        agent_token_budget=int(get("AGENT_TOKEN_BUDGET", "8000")),
         max_child_input_chars=int(get("MAX_CHILD_INPUT_CHARS", "300")),
         books_dirs=tuple(
             path(p.strip()) for p in get("BOOKS_DIR", "books,eval/books").split(",") if p.strip()

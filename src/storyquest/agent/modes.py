@@ -12,6 +12,7 @@ class Mode:
     hybrid: bool = False  # search by keywords and by meaning (embeddings), then fuse
     entities: bool = False  # add the cards of characters, places and terms the child names
     rerank: bool = False
+    agentic: bool = False  # plan, run tools, answer, then a critic checks (see agent/loop.py)
 
 
 MODES = {
@@ -48,6 +49,14 @@ MODES = {
         entities=True,
         rerank=True,
     ),
+    "M5": Mode(
+        "M5",
+        "Agent loop: planner, tools, sentence evidence, critic, session memory",
+        retrieval=True,
+        grounded=True,
+        hybrid=True,
+        agentic=True,
+    ),
 }
 
 
@@ -68,6 +77,20 @@ _GENERATE_PLAIN = (
 )
 
 
+_AGENT_STEPS = [
+    "Planner: a model call rewrites the question so it stands on its own (using the last few "
+    "questions of the session) and chooses 1 to 3 tools: search the book, look up a name, or "
+    "read the current scene.",
+    "Tools: code runs them, only over text the child has already read. A failing tool is skipped.",
+    _GENERATE,
+    "Output check: a reply that mentions films or a name from later in the book is replaced "
+    "by a safe reply.",
+    "Critic: a model call checks that every fact is in the cited sentences, that the question "
+    "is answered and that the words suit the child. One revision is allowed, then a safe reply. "
+    "A turn is capped at 10 steps and a token budget.",
+]
+
+
 def describe_steps(mode: Mode, top_k: int) -> list[str]:
     """What the agent does in this mode, in order, in plain words."""
     steps = [
@@ -76,6 +99,8 @@ def describe_steps(mode: Mode, top_k: int) -> list[str]:
         "unsafe, injection or personal). Anything except a story question gets a fixed, "
         "pre-written reply and the turn ends here.",
     ]
+    if mode.agentic:
+        return [*steps, *_AGENT_STEPS]
     if mode.retrieval:
         how = (
             "BM25 keyword ranking and embedding (meaning) similarity, combined by reciprocal "

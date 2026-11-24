@@ -1,8 +1,22 @@
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
 from storyquest.models.llm import LLMResult, Message
 from storyquest.stores.search import SearchHit
+
+
+@contextmanager
+def timed(timings: dict[str, float], name: str) -> Iterator[None]:
+    """Add how long a stage took to `timings[name]`, even if the stage ends the turn early.
+    A stage that runs twice (the agent's second answer, say) adds up."""
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        timings[name] = round(timings.get(name, 0.0) + time.monotonic() - start, 4)
 
 
 def hit_to_dict(p: SearchHit, *, full: bool) -> dict[str, Any]:
