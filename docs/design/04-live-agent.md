@@ -53,11 +53,13 @@ Plain Python, no agent framework (LangGraph, CrewAI or AutoGen) for the MVP.
    | `lookup_character(name)` | Book passages that mention the name, then its entity card |
    | `current_scene()` | The retelling of the beat the child is reading |
 
-   A failing or unknown tool is skipped with a `tool_error` flag. Results are merged fairly (every tool's best passage first), up to 8 passages.
+   The question itself is always searched first (`search_book` for the rewritten question), then the planner's own calls, three in all: measured on a local preview, a lone name lookup returned a character's first mentions rather than the passage that answers, so the planner may add to a plain search but never replace it. A failing or unknown tool is skipped with a `tool_error` flag. Results are merged fairly (every tool's best passage first), up to 8 passages.
 3. **Answer**: as in M2S, the model cites numbered book sentences and code checks the ids; then the existing output check (film words, later names). Only the child's own words may name a later character, so a planner rewrite cannot slip a spoiler past it.
-4. **Critic** (`agent/critic.py`, one call, JSON schema): approves only if every fact is in the cited sentences, the question is answered and the words suit the child; otherwise it names the problem and the answer is written once more with that feedback. A second rejection gives the safe "I don't know that yet".
+4. **Critic** (`agent/critic.py`, one call, JSON schema): reads the cited sentences inside the passages they come from (a cited "He has been lame in one foot" says nothing about who "he" is on its own), and approves only if every fact is in the cited sentences, about the same character, the question is answered and the words suit the child; otherwise it names the problem and the answer is written once more with that feedback. A second rejection gives the safe "I don't know that yet".
 
 Guardrails: at most `AGENT_MAX_STEPS` (10) steps, model calls and tool calls with the router included, and `AGENT_TOKEN_BUDGET` (8,000) tokens per question; a model error gives the friendly "ask me again". The worst case (a re-asked plan, three tools, two answers, two critic calls) is exactly 10 steps. Agent tools cannot change the game: moving the story on and awarding badges stay with ordinary code, which is the human-in-the-loop boundary for anything consequential.
+
+Known limits: each question costs about three model calls and over 2,000 prompt tokens (the critic reads the passages), against under 1,000 for M2S, and on the shared endpoint that adds seconds per question; the critic sometimes rejects an acceptable answer, which fails safe ("I don't know that yet"). Local development runs use the same Qwen3-8B through Ollama with thinking switched off; only runs on the course endpoint are reported.
 
 Each turn records its tool calls (`TurnResult.tool_calls`) beside its model calls, so traces and the eval report show tool calls per question. In the eval, M5's retrieval is scored on the passages its own tools found.
 
