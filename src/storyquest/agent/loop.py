@@ -10,6 +10,7 @@ questions reach this loop. The guardrails, each tested in tests/agent/test_loop.
 - a question gets at most `AGENT_MAX_STEPS` steps (model calls and tool calls, router included)
   and `AGENT_TOKEN_BUDGET` tokens; past either cap the child gets a safe reply;
 - a plan that cannot be read is asked for once more, then replaced by a plain book search;
+- the question itself is always searched, so the planner's tools add to a plain search;
 - a failing tool is skipped and the others still count;
 - the answer must cite book sentences (as in M2S), then pass the code checks for film words
   and later names, then the critic, who may send it back once before the child gets a safe
@@ -27,7 +28,7 @@ from storyquest.agent.grounding import schema_for, verify
 from storyquest.agent.memory import PastTurn
 from storyquest.agent.modes import Mode
 from storyquest.agent.output_check import check_reply
-from storyquest.agent.planner import Plan, fallback_plan, make_plan
+from storyquest.agent.planner import MAX_CALLS, Plan, fallback_plan, make_plan
 from storyquest.agent.replies import REPLIES
 from storyquest.agent.tools import ToolCall, ToolOutput, run_tool
 from storyquest.agent.trace import StepTrace, ToolTrace, TurnResult, timed
@@ -59,6 +60,20 @@ class Budget:
         if self.tokens >= self.max_tokens:
             return "token_budget"
         return None
+
+
+def calls_to_run(plan: Plan) -> list[ToolCall]:
+    """The question itself is always searched first, then the planner's own calls, three at most.
+
+    Measured on the dev split, the planner often chose a single name lookup ("Why does Shere
+    Khan limp?" -> lookup_character("Shere Khan")), which returns a character's first mentions
+    rather than the passage that answers, and the gold passage was found for 15 of 23 questions
+    instead of 22. Searching the question first means the planner can only add to what a plain
+    search finds, never replace it.
+    """
+    base = ToolCall("search_book", plan.question)
+    extra = [c for c in plan.calls if c != base]
+    return [base, *extra][:MAX_CALLS]
 
 
 def merge_passages(outputs: Sequence[ToolOutput], limit: int = MAX_PASSAGES) -> list[SearchHit]:
@@ -207,7 +222,7 @@ def run_agent(
         run.record(step)
 
     plan = run.plan(child_text, history)
-    if not run.gather(plan.calls):
+    if not run.gather(calls_to_run(plan)):
         run.flags.append("no_hits")
         return run.finish(REPLIES["unknown_yet"])
 

@@ -33,12 +33,13 @@ def test_the_eval_scores_m5_on_the_passages_its_tools_found(
             r["id"]: r for r in run_eval(make_ctx(llm), items, get_mode("M5"), log=lambda _: None)
         }
 
-    # A search for the limp finds the gold lines; looking up only his name finds his first
-    # mentions instead. Retrieval is scored on what the agent's own tools returned.
+    # Retrieval is scored on what the agent's own tools returned. A name lookup alone finds
+    # only Shere Khan's first mentions, but the question is always searched as well, so the
+    # gold lines about his limp are still found.
     searched = rows_for(("search_book", "Shere Khan lame foot"))
     assert searched["CAN-003"]["retrieval_hit"] is True
-    assert searched["CAN-003"]["tool_calls"] == 1 and searched["CAN-003"]["calls"] == 4
-    assert rows_for(("lookup_character", "Shere Khan"))["CAN-003"]["retrieval_hit"] is False
+    assert searched["CAN-003"]["tool_calls"] == 2 and searched["CAN-003"]["calls"] == 4
+    assert rows_for(("lookup_character", "Shere Khan"))["CAN-003"]["retrieval_hit"] is True
     assert searched["MAL-001"]["tool_calls"] == 0  # an empty message never reaches the planner
 
     ctx = make_ctx(AgentLLM())

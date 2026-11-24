@@ -7,11 +7,12 @@ import pytest
 
 from llm_helpers import AgentLLM, plan, verdict
 from storyquest.agent.context import AgentContext
-from storyquest.agent.loop import MAX_PASSAGES, merge_passages
+from storyquest.agent.loop import MAX_PASSAGES, calls_to_run, merge_passages
 from storyquest.agent.memory import PastTurn
 from storyquest.agent.modes import get_mode
+from storyquest.agent.planner import Plan
 from storyquest.agent.replies import REPLIES
-from storyquest.agent.tools import TOOLS, Tool, ToolOutput
+from storyquest.agent.tools import TOOLS, Tool, ToolCall, ToolOutput
 from storyquest.agent.turn import run_turn
 from storyquest.domain.position import Position
 from storyquest.models.llm import LLMClient
@@ -41,7 +42,10 @@ def test_plan_tools_answer_and_critic_in_order(make_ctx: MakeCtx) -> None:
     assert result.reply == "Shere Khan was born lame in one foot."
     assert (result.route, result.mode, result.flags) == ("story_question", "M5", [])
     assert names(result) == ["router", "planner", "generate", "critic"]
-    assert [(t.tool, t.argument) for t in result.tool_calls] == [("search_book", "lame")]
+    assert [(t.tool, t.argument) for t in result.tool_calls] == [
+        ("search_book", "Why does Shere Khan limp?"),  # the question itself, always first
+        ("search_book", "lame"),  # then what the planner chose
+    ]
     assert result.passages and result.evidence  # the answer cites a real book sentence
     assert set(result.timings) >= {"router", "planner", "tools", "generate", "critic"}
     assert "<book_sentences>" in llm.prompts("critic")[0]
@@ -55,12 +59,30 @@ def test_other_messages_still_get_their_fixed_reply_without_planning(make_ctx: M
 
 
 def test_several_tools_are_merged_fairly(make_ctx: MakeCtx) -> None:
-    calls = (("lookup_character", "Tabaqui"), ("current_scene", ""), ("search_book", "jackal"))
+    calls = (("lookup_character", "Tabaqui"), ("current_scene", ""))
     result = ask(make_ctx(AgentLLM(plans=[plan("Who is Tabaqui?", *calls)])), "Who is Tabaqui?")
-    assert [t.tool for t in result.tool_calls] == [c[0] for c in calls]
-    assert result.passages[0].text.find("Tabaqui") >= 0
-    assert result.passages[1].source == "scene"  # the scene is not crowded out by searches
+    assert [t.tool for t in result.tool_calls] == [
+        "search_book",
+        "lookup_character",
+        "current_scene",
+    ]
+    assert "Tabaqui" in result.passages[0].text
+    # Each tool's best passage comes first, so the scene is not crowded out by the searches.
+    assert "scene" in {p.source for p in result.passages[:3]}
     assert len(result.passages) <= MAX_PASSAGES
+
+
+def test_the_question_is_always_searched_first_within_three_calls() -> None:
+    question = "Why does Shere Khan limp?"
+    looked_up = Plan(question, [ToolCall("lookup_character", "Shere Khan")])
+    assert calls_to_run(looked_up) == [
+        ToolCall("search_book", question),
+        ToolCall("lookup_character", "Shere Khan"),
+    ]
+    same = Plan(question, [ToolCall("search_book", question)])
+    assert calls_to_run(same) == [ToolCall("search_book", question)]  # not searched twice
+    many = Plan(question, [ToolCall("search_book", f"q{n}") for n in range(3)])
+    assert len(calls_to_run(many)) == 3
 
 
 def test_merge_takes_each_tools_best_first_and_drops_repeats() -> None:
@@ -184,7 +206,7 @@ def test_a_failing_tool_is_skipped_and_the_others_still_count(
     monkeypatch.setitem(TOOLS, "lookup_character", Tool("lookup_character", "x", broken))
     calls = (("lookup_character", "Shere Khan"), ("search_book", "Shere Khan lame"))
     result = ask(make_ctx(AgentLLM(plans=[plan("Why does Shere Khan limp?", *calls)])))
-    assert result.tool_calls[0].error == "RuntimeError: cards table missing"
+    assert result.tool_calls[1].error == "RuntimeError: cards table missing"
     assert "tool_error:lookup_character" in result.flags
     assert result.reply == "Shere Khan was born lame in one foot."
 
@@ -205,7 +227,8 @@ def test_the_step_cap_stops_the_loop_before_another_model_call(make_ctx: MakeCtx
     ctx = make_ctx(AgentLLM())
     capped = replace(ctx, settings=replace(ctx.settings, agent_max_steps=3))
     result = ask(capped)  # router, planner and one tool use the three steps
-    assert result.reply == REPLIES["unknown_yet"] and result.flags == ["step_cap"]
+    assert result.reply == REPLIES["unknown_yet"]
+    assert result.flags == ["step_cap:tools", "step_cap"]  # the second tool never ran
     assert names(result) == ["router", "planner"] and len(result.tool_calls) == 1
 
 
