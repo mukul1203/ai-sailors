@@ -30,6 +30,7 @@ from storyquest.evaluation.runner import (
     run_eval,
     write_run,
 )
+from storyquest.evaluation.tables import render_tables
 from storyquest.ingestion.embed import embed_book
 from storyquest.ingestion.errors import IngestionError
 from storyquest.ingestion.inspect import render_book, render_hits
@@ -354,7 +355,7 @@ def _eval_run(args: argparse.Namespace) -> int:
     except (LLMError, AgentError, EmbeddingError, RerankerError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    batch = new_batch_dir(settings.root / "eval" / "runs")
+    batch = Path(args.out) if args.out else new_batch_dir(settings.root / "eval" / "runs")
     runs = []
     for mode in modes:
         print(f"\n=== Mode {mode.name}: {mode.title} ===")
@@ -368,6 +369,35 @@ def _eval_run(args: argparse.Namespace) -> int:
         print("\n" + summary)
         runs.append((config, rows))
     _publish(batch / "report.html", render_report(runs), open_it=not args.no_open)
+    return 0
+
+
+def _eval_preflight(args: argparse.Namespace) -> int:
+    """Do the chat model and the embedding endpoint really answer? Asked without the cache, so a
+    server that is down fails here instead of a long run quietly replaying cached answers."""
+    settings = load_settings()
+    problems = []
+    try:
+        reply = build_llm(settings, use_cache=False).chat(
+            [{"role": "user", "content": "Say ok."}], max_tokens=4
+        )
+        print(f"ok       chat model {settings.llm_model} answered ({reply.latency_s:.1f}s)")
+    except LLMError as e:
+        problems.append(f"chat model: {e}")
+    try:
+        build_embedder(settings, use_cache=False).embed(["ok"], query=True)
+        print(f"ok       embeddings {settings.embedding_model} answered")
+    except EmbeddingError as e:
+        problems.append(f"embeddings: {e}")
+    for p in problems:
+        print(f"FAILED   {p}", file=sys.stderr)
+    return 1 if problems else 0
+
+
+def _eval_tables(args: argparse.Namespace) -> int:
+    """Markdown tables of the headline numbers of saved runs, for the technical report."""
+    runs = [run for folder in args.folders for run in load_batch(Path(folder))]
+    print(render_tables(runs))
     return 0
 
 
@@ -532,6 +562,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--no-cache", action="store_true")
     run.add_argument("--no-judge", action="store_true", help="skip the LLM judge (faster)")
     run.add_argument("--no-open", action="store_true", help="do not open the report")
+    run.add_argument("--out", help="folder for this run (default: a new one under eval/runs)")
+    ev.add_parser("preflight", help="Check the chat model and embeddings answer (no cache)")
+    tab = ev.add_parser("tables", help="Markdown tables of saved runs, for the report")
+    tab.add_argument("folders", nargs="+", help="run or batch folders under eval/runs")
     ret = ev.add_parser(
         "retrieval", help="Recall@k of keyword, meaning and hybrid search (no chat-model calls)"
     )
@@ -589,6 +623,12 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "ask":
         return _ask(args)
     if args.command == "eval":
-        commands = {"run": _eval_run, "retrieval": _eval_retrieval, "report": _eval_report}
+        commands = {
+            "run": _eval_run,
+            "retrieval": _eval_retrieval,
+            "report": _eval_report,
+            "preflight": _eval_preflight,
+            "tables": _eval_tables,
+        }
         return commands[args.eval_command](args)
     return 2

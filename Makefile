@@ -44,7 +44,7 @@ ENV := set -a; \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
-        eval eval-retrieval eval-report \
+        eval eval-retrieval eval-report final-eval \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -307,6 +307,21 @@ eval: _need-code ## Run the evals and open the report: make eval [MODES="M0 M1S 
 # e.g. `EMBEDDING_CONTEXT_CHARS=1200 make eval-retrieval` after embedding with the same setting.
 eval-retrieval: _need-code ## Recall@k of keyword/meaning/hybrid search: make eval-retrieval [SPLIT=dev] [ARGS="--k 3,6,10"]
 	@$(ENV) $(BIN)/storyquest eval retrieval --split $(SPLIT) $(ARGS)
+
+# Every number the report needs, in one go, once the course endpoints answer. First checks that
+# the chat model and the embeddings really respond (no cache), then runs the retrieval eval, the
+# dev evals of FINAL_MODES, the test split once, and the report tables, all saved together in
+# eval/runs/final-<time>/ (tables.md holds the Markdown for the report). Slow: the endpoint
+# serves one request at a time for the whole group, so tell the group before running it.
+FINAL_MODES ?= M2S M4S M5
+final-eval: _need-code ## All report numbers in one go: make final-eval [FINAL_MODES="M2S M4S M5"]
+	@$(ENV) $(BIN)/storyquest eval preflight
+	@$(ENV) out="eval/runs/final-$$(date +%Y%m%d-%H%M%S)"; mkdir -p "$$out" \
+	  && $(BIN)/storyquest eval retrieval --split dev > "$$out/retrieval-dev.txt" \
+	  && $(BIN)/storyquest eval run --modes "$(FINAL_MODES)" --split dev --no-open --out "$$out/dev" \
+	  && $(BIN)/storyquest eval run --modes "$(FINAL_MODES)" --split test --no-open --out "$$out/test" \
+	  && $(BIN)/storyquest eval tables "$$out/dev" "$$out/test" > "$$out/tables.md" \
+	  && cat "$$out/retrieval-dev.txt" "$$out/tables.md" && echo "Saved in $$out"
 
 # Rebuilds report.html from a saved folder under eval/runs/ and opens it again, without any
 # model calls. Useful after the report layout changes or to look at an old run.
