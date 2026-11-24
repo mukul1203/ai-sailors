@@ -55,6 +55,26 @@ class StepTrace:
 
 
 @dataclass(frozen=True)
+class ToolTrace:
+    """One tool the agent ran: what it asked for and what came back (no model is involved)."""
+
+    tool: str
+    argument: str
+    found: int  # passages returned
+    latency_s: float
+    error: str = ""  # why the tool failed, if it did; the turn carries on without it
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tool": self.tool,
+            "argument": self.argument,
+            "found": self.found,
+            "latency_s": round(self.latency_s, 4),
+            "error": self.error,
+        }
+
+
+@dataclass(frozen=True)
 class TurnResult:
     reply: str
     route: str  # what the router decided, or the reason the turn ended early
@@ -66,6 +86,7 @@ class TurnResult:
     started_at: float = 0.0  # wall-clock time (epoch seconds) the turn began
     total_latency_s: float = 0.0  # real time the whole turn took
     timings: dict[str, float] = field(default_factory=dict)  # seconds per stage that ran
+    tool_calls: list[ToolTrace] = field(default_factory=list)  # agent mode only
 
     @property
     def prompt_tokens(self) -> int:
@@ -87,4 +108,5 @@ class TurnResult:
             "passages": [hit_to_dict(p, full=full) for p in self.passages],
             "flags": self.flags,
             "evidence": self.evidence,
+            "tool_calls": [t.to_dict() for t in self.tool_calls],
         }
