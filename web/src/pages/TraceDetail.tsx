@@ -5,7 +5,9 @@ import TraceGate from "../components/TraceGate";
 import type { TracePassage, TraceStep } from "../types";
 import { Flags, when } from "./Traces";
 
-const STAGES = ["guard", "router", "retrieval", "generate", "verify", "output_check"];
+const STAGES = [
+  "guard", "router", "planner", "tools", "retrieval", "generate", "verify", "output_check", "critic",
+];
 
 function rank(n: number | null): string {
   return n === null ? "–" : String(n);
@@ -106,6 +108,31 @@ export default function TraceDetail() {
           </p>
         )}
       </div>
+
+      {trace.tool_calls && trace.tool_calls.length > 0 && (
+        <div className="card">
+          <h3>Tools the agent ran</h3>
+          <table>
+            <thead>
+              <tr><th>Tool</th><th>Asked for</th><th>Passages found</th><th>Time</th></tr>
+            </thead>
+            <tbody>
+              {trace.tool_calls.map((t, i) => (
+                <tr key={`${t.tool}-${i}`}>
+                  <td><code>{t.tool}</code></td>
+                  <td>{t.argument || "–"}</td>
+                  <td>{t.error ? `failed: ${t.error}` : t.found}</td>
+                  <td>{t.latency_s.toFixed(2)} s</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="note">
+            The planner chooses these. The child's position is set by code, so a tool only
+            returns text the child has already read. The passages below are what the tools found.
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <h3>2. Retrieval</h3>

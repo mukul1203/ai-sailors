@@ -58,6 +58,16 @@ FLAGS = {
     "banned_term": "the reply mentioned a film or cartoon term, so it was replaced by a safe reply",
     "later_name": "the reply used a name from later in the book, so it was replaced by a safe reply",
     "llm_error": "a model call failed",
+    # the agent loop (mode M5)
+    "planner_unparsed": "the planner's answer could not be read, so it was asked again",
+    "planner_fallback": "the planner gave no usable plan, so the book was searched for the child's own words",
+    "tool_error": "a tool failed and was skipped; the other tools still counted",
+    "critic_revise": "the critic sent the answer back to be written again",
+    "critic_revised": "the answer passed the critic after one revision",
+    "critic_rejected": 'the critic rejected the answer twice, so the reply became "I don\'t know that yet"',
+    "critic_unparsed": "the critic's verdict could not be read, so the checked answer was used",
+    "step_cap": 'the question used its 10 steps, so the reply became "I don\'t know that yet"',
+    "token_budget": 'the question used its token budget, so the reply became "I don\'t know that yet"',
 }
 
 UNGROUNDED = {

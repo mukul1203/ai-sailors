@@ -174,6 +174,14 @@ export interface TraceStep {
   output?: string; // only when stored in full
 }
 
+export interface TraceToolCall {
+  tool: string;
+  argument: string;
+  found: number; // passages returned
+  latency_s: number;
+  error: string; // why the tool failed, if it did
+}
+
 export interface TracePassage {
   chunk_id: number;
   chapter: number;
@@ -184,7 +192,7 @@ export interface TracePassage {
   dense_rank: number | null;
   rerank_rank: number | null;
   rerank_score: number | null;
-  source: string; // "chunk" or "entity"
+  source: string; // "chunk", "entity" (a card) or "scene" (the current beat's retelling)
   text?: string; // only when stored in full
 }
 
@@ -208,6 +216,7 @@ export interface TraceDetail {
     passages: TracePassage[];
     flags: string[];
     evidence: string;
+    tool_calls?: TraceToolCall[]; // agent mode (M5) only; absent in older traces
   };
   notes: { flags: Record<string, string>; pipeline: string[] };
 }
