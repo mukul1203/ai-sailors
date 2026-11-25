@@ -104,7 +104,8 @@ def _run(
             result = generate(
                 ctx,
                 messages,
-                schema=schema_for(passages) if mode.grounded else None,
+                schema=schema_for(passages, mode.prompting) if mode.grounded else None,
+                thinking=mode.prompting in ("chain-of-thought", "decomposition"),
             )
     except LLMError as e:
         flags.append(f"llm_error:generate:{e}")

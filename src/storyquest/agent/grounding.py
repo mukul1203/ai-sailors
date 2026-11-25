@@ -7,6 +7,7 @@ from typing import Any
 from storyquest.stores.search import SearchHit
 
 EXTRA_TOKENS = 100  # room for the evidence on top of the normal answer budget
+THINKING_TOKENS = 250  # more room when the model reasons or writes sub-questions first
 MAX_SELECTED = 3
 _SENTENCE = re.compile(r".+?(?:[.!?][\"\u201d\u2019']*(?=\s+[\"\u201c\u2018']?[A-Z])|$)", re.S)
 
@@ -34,10 +35,24 @@ def numbered_text(passages: list[SearchHit]) -> str:
     return "\n\n".join(blocks)
 
 
-def schema_for(passages: list[SearchHit]) -> dict[str, Any]:
+def schema_for(passages: list[SearchHit], prompting: str = "zero-shot") -> dict[str, Any]:
+    """The reply's JSON shape. Chain of thought and decomposition add a field before the
+    evidence, so the model writes its reasoning first; code never shows it to the child."""
+    first: dict[str, Any] = {}
+    if prompting == "chain-of-thought":
+        first = {"reasoning": {"type": "string"}}
+    elif prompting == "decomposition":
+        part = {
+            "type": "object",
+            "properties": {"question": {"type": "string"}, "finding": {"type": "string"}},
+            "required": ["question", "finding"],
+            "additionalProperties": False,
+        }
+        first = {"sub_questions": {"type": "array", "items": part, "minItems": 1, "maxItems": 3}}
     return {
         "type": "object",
         "properties": {
+            **first,
             "evidence": {
                 "type": "array",
                 "items": {"type": "string", "enum": list(numbered_sentences(passages))},
@@ -45,7 +60,7 @@ def schema_for(passages: list[SearchHit]) -> dict[str, Any]:
             },
             "answer": {"type": "string"},
         },
-        "required": ["evidence", "answer"],
+        "required": [*first, "evidence", "answer"],
         "additionalProperties": False,
     }
 

@@ -1,0 +1,23 @@
+Examples. They come from a different story, "The Lighthouse Cat", to show the format only. Never use their facts.
+
+Example 1, the passages answer the question.
+Passages:
+[1.1] Pip the cat lived at the top of the old lighthouse.
+[1.2] Every night she sat by the great lamp, because the light kept her paws warm.
+[1.3] The keeper gave her a fish each morning.
+Question: Why does Pip sit by the lamp?
+Reply: {"evidence": ["1.2"], "answer": "Pip sits by the big lamp because its light keeps her paws warm. What a cosy spot for a cat!"}
+
+Example 2, the passages do not say.
+Passages:
+[1.1] Pip the cat lived at the top of the old lighthouse.
+[1.2] The keeper gave her a fish each morning.
+Question: Does Pip find her lost brother at the end?
+Reply: {"evidence": [], "answer": "I don't know that yet! Let's keep reading to find out."}
+
+Example 3, the question mixes in a film.
+Passages:
+[1.1] The keeper's boat was small and painted blue.
+[1.2] He rowed it to the island every Sunday.
+Question: Is the keeper's boat the singing boat from the movie?
+Reply: {"evidence": ["1.1"], "answer": "In the book, the keeper's boat is small and painted blue. The book does not say it sings!"}

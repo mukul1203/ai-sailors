@@ -3,7 +3,7 @@
 from typing import Any
 
 from storyquest.agent.context import AgentContext, Where
-from storyquest.agent.grounding import EXTRA_TOKENS, numbered_text
+from storyquest.agent.grounding import EXTRA_TOKENS, THINKING_TOKENS, numbered_text
 from storyquest.agent.modes import Mode
 from storyquest.agent.prompts import load_prompt
 from storyquest.models.llm import LLMResult, Message
@@ -25,6 +25,13 @@ _RULE_SELECT = (
 )
 
 
+_STRATEGY_PROMPTS = {
+    "few-shot": "strategy_few_shot",
+    "chain-of-thought": "strategy_cot",
+    "decomposition": "strategy_decompose",
+}
+
+
 def _evidence_rule(mode: Mode) -> str:
     if mode.grounded:
         return _RULE_SELECT
@@ -41,6 +48,8 @@ def build_messages(
         beat=where.beat_title or "the start of the chapter",
         evidence_rule=_evidence_rule(mode),
     )
+    if mode.grounded and mode.prompting in _STRATEGY_PROMPTS:
+        system += "\n" + load_prompt(_STRATEGY_PROMPTS[mode.prompting])
     parts: list[str] = []
     if mode.retrieval:
         numbered = (
@@ -57,12 +66,18 @@ def build_messages(
 
 
 def generate(
-    ctx: AgentContext, messages: list[Message], *, schema: dict[str, Any] | None = None
+    ctx: AgentContext,
+    messages: list[Message],
+    *,
+    schema: dict[str, Any] | None = None,
+    thinking: bool = False,
 ) -> LLMResult:
+    """`thinking`: the schema asks for reasoning or sub-questions first, which need more room."""
     if schema is not None:
+        extra = EXTRA_TOKENS + (THINKING_TOKENS if thinking else 0)
         return ctx.llm.chat(
             messages,
-            max_tokens=ctx.settings.generation_max_tokens + EXTRA_TOKENS,
+            max_tokens=ctx.settings.generation_max_tokens + extra,
             temperature=0.0,
             json_schema=schema,
         )

@@ -13,6 +13,15 @@ class Mode:
     entities: bool = False  # add the cards of characters, places and terms the child names
     rerank: bool = False
     agentic: bool = False  # plan, run tools, answer, then a critic checks (see agent/loop.py)
+    # How the answer prompt asks: "zero-shot" (rules only), "few-shot" (worked examples),
+    # "chain-of-thought" (reason first) or "decomposition" (sub-questions first). Grounded only.
+    prompting: str = "zero-shot"
+
+
+def _m2s(name: str, how: str, prompting: str) -> Mode:
+    """M2S with another answer prompt: same retrieval and grounding, to compare prompting."""
+    title = f"Hybrid retrieval + sentence evidence, {how}"
+    return Mode(name, title, True, grounded=True, hybrid=True, prompting=prompting)
 
 
 MODES = {
@@ -23,6 +32,9 @@ MODES = {
     "M2S": Mode(
         "M2S", "Hybrid retrieval + sentence evidence", retrieval=True, grounded=True, hybrid=True
     ),
+    "M2S-FS": _m2s("M2S-FS", "few-shot examples", "few-shot"),
+    "M2S-COT": _m2s("M2S-COT", "reasoning first (chain of thought)", "chain-of-thought"),
+    "M2S-DEC": _m2s("M2S-DEC", "sub-questions first (decomposition)", "decomposition"),
     "M3": Mode("M3", "Hybrid retrieval + entity cards", True, hybrid=True, entities=True),
     "M3S": Mode(
         "M3S",
@@ -72,6 +84,14 @@ _GENERATE = (
     "to 3 sentence numbers as its evidence, then answers. Code looks the sentences up. If "
     'the model lists none, the reply is "I don\'t know that yet".'
 )
+_PROMPTING_STEP = {
+    "few-shot": " The prompt also shows 3 worked examples from an invented story: an answer, "
+    '"I don\'t know that yet" when the passages do not say, and a film question.',
+    "chain-of-thought": " Before the evidence, the model writes 1 to 3 sentences of reasoning "
+    "(never shown to the child).",
+    "decomposition": " Before the evidence, the model splits the question into 1 to 3 "
+    "sub-questions and notes what the passages say about each (never shown to the child).",
+}
 _GENERATE_PLAIN = (
     "Answer: the model writes 2 to 4 simple sentences using only the passages it was given."
 )
@@ -122,7 +142,11 @@ def describe_steps(mode: Mode, top_k: int) -> list[str]:
                 "it) is added as an extra passage, up to 2. Cards the child has not reached yet "
                 "are never used."
             )
-        steps.append(_GENERATE if mode.grounded else _GENERATE_PLAIN)
+        steps.append(
+            _GENERATE + _PROMPTING_STEP.get(mode.prompting, "")
+            if mode.grounded
+            else _GENERATE_PLAIN
+        )
     else:
         steps.append(
             "Answer: the model writes 2 to 4 simple sentences from its own memory of the book. "
