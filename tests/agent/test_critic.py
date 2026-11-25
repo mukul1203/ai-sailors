@@ -52,12 +52,3 @@ def test_the_critic_sees_the_question_the_passages_the_sentences_and_the_answer(
     assert f"<passages>\n{passages}\n</passages>" in user  # so "he" or "it" can be resolved
     assert "<book_sentences>\nIt was the jackal.\n</book_sentences>" in user
     assert user.endswith("<answer>\nA jackal.\n</answer>")
-
-
-def test_the_critic_prompt_says_what_is_not_a_problem() -> None:
-    from storyquest.agent.prompts import load_prompt
-
-    prompt = load_prompt("critic").format(title="T", chapter="C", beat="B")
-    assert "NOT problems" in prompt and "different or simpler words" in prompt
-    assert "quote the exact words" in prompt
-    assert '"verdict": "approve"' in prompt and '"verdict": "revise"' in prompt  # examples

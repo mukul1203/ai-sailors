@@ -102,7 +102,7 @@ def test_m2s_keeps_its_prompt_unchanged(make_ctx: MakeCtx) -> None:
 
 @pytestmark_integration
 @pytest.mark.parametrize(
-    ("name", "marker"), [("M5-FS", "Example 1, the passages answer"), ("M5-COT", "In reasoning")]
+    ("name", "marker"), [("M5-FS", "The Lighthouse Cat"), ("M5-COT", "In reasoning")]
 )
 def test_the_agent_variants_change_only_the_answer_prompt(
     make_ctx: MakeCtx, name: str, marker: str
@@ -123,6 +123,5 @@ def test_m5_keeps_its_answer_prompt_unchanged(make_ctx: MakeCtx) -> None:
     llm = AgentLLM()
     run_turn(make_ctx(llm), "Why does Shere Khan limp?", Position(0, 1), mode=get_mode("M5"))
     systems = {llm.role(m): m[0]["content"] for m in llm.calls}
-    assert "Example 1, the passages" not in systems["generate"]
-    assert "In reasoning" not in systems["generate"]
+    assert "Lighthouse" not in systems["generate"] and "In reasoning" not in systems["generate"]
     assert not get_mode("M5").thinks and get_mode("M5-COT").thinks
