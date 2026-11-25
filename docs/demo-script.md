@@ -11,11 +11,13 @@ script is about 9 minutes, leaving a minute for slack.
    the Play tab.
 3. Set in `.env` for the demo: `PLAY_MODE=M5` (already the default in `config.env`),
    `TRACE_DASHBOARD=true`, `ADMIN_TOKEN=<a fresh secret>`, `API_DEBUG=false`.
-4. `make build-web`, then `make dev-api`, and open http://localhost:8000.
-5. **Rehearse every question below once.** Answers are cached, so on stage the same questions
+4. Optional, for the OpenTelemetry part: `make jaeger` and add
+   `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` to `.env`.
+5. `make build-web`, then `make dev-api`, and open http://localhost:8000.
+6. **Rehearse every question below once.** Answers are cached, so on stage the same questions
    come back at once and identically even if the shared endpoint is slow; the trace dashboard
    marks such turns "replayed", so say so if asked.
-6. Keep a screen recording of the rehearsal as a fallback if the endpoint is down on the day.
+7. Keep a screen recording of the rehearsal as a fallback if the endpoint is down on the day.
 
 ## Script
 
@@ -50,12 +52,18 @@ Ask, in this order. Each was tried at the second scene on a local Qwen3-8B on 24
   model call (planner, answer, critic); the cited evidence; the flags; the reply.
 - One sentence on guardrails: at most 10 steps and 8,000 tokens per question, one critic
   revision, tools that can only read and only up to the child's position.
+- If Jaeger is running: click "open in Jaeger" on the same trace. The same turn as a
+  standard OpenTelemetry trace, a timeline of guard, router, planner, tools, answer and
+  critic, with no child text in it; the shared trace id leads back here to the message.
 
 ### 5. How we know it works (1 minute)
 - The golden set: 80 questions in 10 categories, gold answers with line-level evidence.
 - Paste the table from `make final-eval` (dev and test) and say the one-line findings:
   [TBD: M2S vs M4S vs M5 pass rates]; scene context raised gold-passage recall from 15/23
   (keyword only) to 20/23; the reranker helps the top 3, not the top 6.
+- Prompting: few-shot, chain-of-thought and decomposition prompts on the same retrieval were
+  within noise of zero-shot, in M2S and inside the agent; the agent's plain answer prompt
+  stayed best [TBD: confirm on the course endpoint].
 - One honest limit: the agent costs about three model calls a question, so it is slower.
 
 ### 6. Close (30 seconds)

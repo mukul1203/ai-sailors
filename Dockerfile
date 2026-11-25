@@ -26,7 +26,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src/ src/
-RUN pip install -e . \
+RUN pip install -e ".[otel]" \
  && if [ "$WITH_RERANKER" = "1" ]; then \
       pip install --extra-index-url https://download.pytorch.org/whl/cpu torch \
       && pip install -e ".[reranker]" \

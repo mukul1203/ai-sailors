@@ -54,7 +54,7 @@ StoryQuest Copilot is a parent-approved, book-grounded storytelling game for chi
 
 Those free-text questions are answered by a retrieval-augmented agent. It uses hybrid retrieval (BM25 plus dense embeddings, fused with reciprocal rank fusion, optionally reranked by a cross-encoder), a spoiler filter enforced inside the SQL query, a router that deflects unsafe or off-topic input, sentence-level grounded answers, and a rule-based output check. The generator is Qwen3-8B on a shared hosted endpoint, so the design compensates for a small model with code-side checks instead of larger prompts.
 
-An agent mode (M5) adds a planner that chooses among three read-only, position-safe tools, a critic that checks each answer against the passages it cites, session memory for follow-up questions, and step and token caps. On an 80-item golden set (47 dev items run), a no-retrieval baseline (M0) passed 49%. Embedding scene context raised gold-passage recall from 15/23 (keyword only) to 20/23, and a cross-encoder reranker improved the top 3 but not the top 6 the answer is written from. **[TBD: headline pass rates of M2S, M4S and M5 on dev and test, from `make final-eval` on the course endpoint.]** Section 7 explains the measurement limits.
+An agent mode (M5) adds a planner that chooses among three read-only, position-safe tools, a critic that checks each answer against the passages it cites, session memory for follow-up questions, and step and token caps. On an 80-item golden set (47 dev items run), a no-retrieval baseline (M0) passed 49%. Embedding scene context raised gold-passage recall from 15/23 (keyword only) to 20/23, and a cross-encoder reranker improved the top 3 but not the top 6 the answer is written from. Zero-shot, few-shot, chain-of-thought and decomposition prompts, compared on the same retrieval in M2S and inside the agent, were within noise of each other, and the agent's plain answer prompt stayed best (Section 5.6). Every turn can also be exported as an OpenTelemetry trace (Section 6.6). **[TBD: headline pass rates of M2S, M4S and M5 on dev and test, from `make final-eval` on the course endpoint.]** Section 7 explains the measurement limits.
 
 ---
 
@@ -309,7 +309,7 @@ To measure prompting on its own, three variants of M2S keep its hybrid search, i
 
 The reasoning and the sub-questions are part of the JSON schema, so they are written before the evidence and the answer, and code never shows them to the child. They get 250 more output tokens. The variants run on the dev split only (`make eval-prompting`, and in `make final-eval`): a strategy is chosen on dev, so the test split stays unseen. The agent (M5) is itself a multi-call form of decomposition: a separate planner breaks the question into tool calls. Because M5 is the mode the game plays, two more variants put the same answer prompts inside the agent: M5-FS (few-shot) and M5-COT (chain of thought). Its planner and critic prompts stay the same, and there is no decomposition variant, because the planner already decomposes.
 
-**Results.** [TBD: the four strategies on the course endpoint, from `make final-eval`.] A local preview (same Qwen3-8B run locally through Ollama, Gemini embeddings; development numbers, not results, to be rerun on the course endpoint once development is final), 47 dev questions each:
+**Results.** [TBD: the M2S and M5 prompting variants on the course endpoint, from `make final-eval`.] A local preview (same Qwen3-8B run locally through Ollama, Gemini embeddings; development numbers, not results, to be rerun on the course endpoint once development is final), 47 dev questions each:
 
 | Strategy | Passed | Faithful replies | "I don't know that yet" | Prompt tokens | Seconds | Reasoning errors | Hallucinations |
 |---|---|---|---|---|---|---|---|
@@ -487,7 +487,7 @@ The evaluation reports use this mapping directly: the text summary, the HTML rep
 
 ### 7.4 Results
 
-**[TBD: replace this section with `eval/runs/final-<time>/tables.md` from `make final-eval`, run once on the course endpoint: M2S, M4S and M5 on the dev split, then the test split once.]**
+**[TBD: replace this section with `eval/runs/final-<time>/tables.md` from `make final-eval`, run once on the course endpoint: M2S, M4S and M5 on the dev split, then the test split once, and the prompting variants on dev (Section 5.6).]**
 
 The run below is kept for the record but should not be quoted. Its M1S and M2S summaries are identical, and its gold-passage figure for M2S (15/23) is exactly the keyword-only figure; with scene context M2S finds 20/23 (Section 4.5). The machine that ran it most likely had no scene-context vectors yet, so M2S fell back to keyword search (flag `no_vectors`).
 
@@ -607,6 +607,8 @@ The router and output check use no free-form generation for refusals, so a defle
 | `PLAY_MODE` | `M5` (set in `config.env`) |
 | `TRACE_STORE` / `TRACE_DASHBOARD` / `TRACE_RETENTION_DAYS` | `summary` / `false` / 30 |
 | `ADMIN_TOKEN` | unset (in `.env`; needed to open the trace dashboard) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_TRACE_TEXT` / `OTEL_VIEWER_URL` | unset (no export) / `false` / `http://localhost:16686` in `config.env` |
+| `FINAL_MODES` / `PROMPT_MODES` (Makefile) | `M2S M4S M5` / `M2S-FS M2S-COT M2S-DEC M5-FS M5-COT` |
 
 ## Appendix B. Common Commands
 
@@ -630,13 +632,15 @@ src/storyquest/
   ingestion/   text, chapters, segment, beatgen, validate, entities, chunking, embed, pipeline
   stores/      db, content_repo, search (FTS5 + RRF), vector, traces, migrations
   models/      llm, openai_compatible, throttle, cache, embedder, reranker, fake
-  agent/       modes, turn, router, guard, retrieval, grounding, generate, output_check, trace
+  agent/       modes, turn, router, guard, retrieval, grounding, generate, output_check, trace,
+               loop (M5), planner, tools, critic, memory, prompts/ (incl. strategy_*.txt)
   api/         main, play, library, admin, traces
-  evaluation/  runner, scoring, judge, retrieval, report, html_report
+  evaluation/  runner, scoring, judge, retrieval, report, html_report, tables, glossary, planted
+  telemetry.py optional OpenTelemetry export
 web/           React app (Library, Quest, Books, Review, Traces)
-eval/          golden_v1.jsonl, Jungle Book fixture, spine beats, runs
-docs/          capstone brief, PRD, design docs 00-10
-tests/         about 287 test functions
+eval/          golden_v1.jsonl, planted_injection_v1.jsonl, Jungle Book fixture, spine beats, runs
+docs/          capstone brief, PRD, design docs 00-10, this report
+tests/         368 tests (`make check`)
 ```
 
 ---
