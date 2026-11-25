@@ -1,22 +1,30 @@
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
 from storyquest.models.llm import LLMResult, Message
 from storyquest.stores.search import SearchHit
 
+# (stage, wall-clock start, wall-clock end) of every timed stage of the turn being run, for the
+# OpenTelemetry timeline. Set by run_turn; None outside a turn.
+STAGES: ContextVar[list[tuple[str, float, float]] | None] = ContextVar("stages", default=None)
+
 
 @contextmanager
 def timed(timings: dict[str, float], name: str) -> Iterator[None]:
     """Add how long a stage took to `timings[name]`, even if the stage ends the turn early.
     A stage that runs twice (the agent's second answer, say) adds up."""
-    start = time.monotonic()
+    start, wall = time.monotonic(), time.time()
     try:
         yield
     finally:
         timings[name] = round(timings.get(name, 0.0) + time.monotonic() - start, 4)
+        stages = STAGES.get()
+        if stages is not None:
+            stages.append((name, wall, time.time()))
 
 
 def hit_to_dict(p: SearchHit, *, full: bool) -> dict[str, Any]:
@@ -119,6 +127,8 @@ class TurnResult:
     total_latency_s: float = 0.0  # real time the whole turn took
     timings: dict[str, float] = field(default_factory=dict)  # seconds per stage that ran
     tool_calls: list[ToolTrace] = field(default_factory=list)  # agent mode only
+    # (stage, start, end) wall-clock times, for the OpenTelemetry timeline only (not stored)
+    stages: list[tuple[str, float, float]] = field(default_factory=list, compare=False)
 
     @property
     def prompt_tokens(self) -> int:

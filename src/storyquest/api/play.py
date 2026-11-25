@@ -6,6 +6,7 @@ text question runs the live agent, at the child's position, so its answer cannot
 comes later.
 """
 
+import hashlib
 import json
 import logging
 import secrets
@@ -303,7 +304,15 @@ def ask(
     beat = beats[session["beat_idx"]]
     history = recent_turns(app, session_id) if mode.agentic else []
     position = Position(session["chapter_idx"], beat.idx)
-    result = run_turn(ctx, text, position, mode=mode, history=history)
+    session_tag = hashlib.sha256(session_id.encode()).hexdigest()[:12]  # not the id itself
+    result = run_turn(
+        ctx,
+        text,
+        position,
+        mode=mode,
+        history=history,
+        trace_attributes={"storyquest.session": session_tag},
+    )
     event_id = _event(
         app, session_id, "ask", beat.idx, text, result.reply, result.route, result.flags
     )

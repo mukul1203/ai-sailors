@@ -1,7 +1,7 @@
 """One child turn: guard, route, then (retrieve), generate, check, or the agent loop (M5)."""
 
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from storyquest.agent.context import AgentContext
@@ -15,7 +15,7 @@ from storyquest.agent.output_check import check_reply
 from storyquest.agent.replies import REPLIES
 from storyquest.agent.retrieval import retrieve
 from storyquest.agent.router import classify
-from storyquest.agent.trace import StepTrace, TurnResult, timed
+from storyquest.agent.trace import STAGES, StepTrace, TurnResult, timed
 from storyquest.domain.position import Position
 from storyquest.models.llm import LLMError, LLMResult, Message
 from storyquest.stores.search import SearchHit
@@ -43,24 +43,34 @@ def run_turn(
     *,
     mode: Mode,
     history: Sequence[PastTurn] = (),
+    trace_attributes: Mapping[str, str | int] | None = None,
 ) -> TurnResult:
     """Answer one message. `history` (the session's last story questions) is used by the agent
-    mode only, to understand follow-up questions."""
+    mode only, to understand follow-up questions. `trace_attributes` are extra tags for the
+    OpenTelemetry trace (a hashed session id, an eval item id)."""
     started_at, start = time.time(), time.monotonic()
     timings: dict[str, float] = {}
-    result = _run(ctx, text, position, mode, timings, history)
+    stages: list[tuple[str, float, float]] = []
+    token = STAGES.set(stages)
+    try:
+        result = _run(ctx, text, position, mode, timings, history)
+    finally:
+        STAGES.reset(token)
     result = replace(
         result,
         started_at=started_at,
         total_latency_s=round(time.monotonic() - start, 4),
         timings=timings,
+        stages=stages,
     )
     export_turn(
         result,
         {
             "storyquest.book_id": ctx.book.id,
-            "storyquest.chapter": position.chapter_idx,
-            "storyquest.beat": position.beat_idx,
+            "storyquest.chapter": position.chapter_idx + 1,
+            "storyquest.part": position.beat_idx + 1,
+            "storyquest.part_title": ctx.where(position).beat_title or "",
+            **(trace_attributes or {}),
         },
         text=text,
     )

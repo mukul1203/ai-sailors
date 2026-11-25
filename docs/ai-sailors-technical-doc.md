@@ -399,12 +399,13 @@ The dashboard already exposed a real fault: two M4S questions carried a `reranke
 The dashboard is built for this app; the brief also asks for tracing through a standard tool. `storyquest/telemetry.py` sends every turn to any OpenTelemetry (OTLP/HTTP) collector, such as Jaeger, Grafana Tempo or Langfuse.
 
 - **Switch.** Off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set; it needs the optional `otel` extra (`pip install -e ".[otel]"`). `make jaeger` runs a local Jaeger in Docker or Podman.
-- **Shape.** One trace per turn: a `turn` span (mode, route, flags, book position, per-stage seconds, total tokens) with one child span per model call (`router`, `planner`, `generate`, `critic`) and per tool call (`tool search_book`, ...). Model spans use the OpenTelemetry GenAI names (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`), and tool spans `gen_ai.tool.name`, so a standard viewer can read them.
+- **Shape.** One trace per turn. The `turn` span carries the mode, route, outcome (`answer`, or the fixed reply given, such as `unknown_yet` or `personal`), whether the answer was grounded, the flags (also as span events), the book position and part title, the passages used (chapter, part and passage number), total tokens and seconds per stage. Under it is one span per stage that is not a model call (`guard`, `retrieval`, `verify`, `output_check`), one per model call (`router`, `planner`, `generate`, `critic`) and one per tool call (`tool search_book`, ...). Model spans use the OpenTelemetry GenAI names (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`) and add what the call decided: the router's label, the tools the planner chose, the sentence ids the answer cited and the critic's verdict. Tool spans carry `gen_ai.tool.name` and how many passages came back; a failed tool or model call marks its span as an error.
+- **Search.** Eval turns are tagged `storyquest.eval_item` (for example `CAN-005`) and game turns `storyquest.session` (a hash, not the session id), so one question or one session can be found by tag.
 - **Timing.** Each model and tool call records when it returned, so spans sit at their real place on the timeline; a cached call takes no time.
-- **Privacy.** By default no text leaves the app: no child message, reply, prompt or tool argument. `OTEL_TRACE_TEXT=true` adds the message and the reply, for local debugging only. This mirrors `TRACE_STORE=summary`.
-- **Safety.** The turn is exported after it ends, from the trace it already records, so the agent code is unchanged and a failing exporter is logged and never reaches the child. Six tests check the span tree, the GenAI attributes, that no text leaks by default and that nothing is sent without an endpoint.
+- **Privacy.** By default no text leaves the app: no child message, reply, prompt, model output or tool argument. `OTEL_TRACE_TEXT=true` adds all of them, for local debugging only. This mirrors `TRACE_STORE=summary` and `full`.
+- **Safety.** The turn is exported after it ends, from the trace it already records, so the agent code is unchanged and a failing exporter is logged and never reaches the child. Eight tests check the span tree, the stage and decision attributes, the tags, that no text leaks by default, and that nothing is sent without an endpoint.
 
-![An M5 turn in Jaeger: router, planner, three tool calls, the answer and the critic, each with its timing; the answer span shows the model and its token counts](images/otel-jaeger-trace.png)
+![An M5 turn in Jaeger for golden question CAN-005: the turn's tags (mode, outcome, grounded, book position) above the timeline of guard, router, planner, three tool calls, the answer and the critic](images/otel-jaeger-trace.png)
 
 ---
 
@@ -564,7 +565,7 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Observability**
 
-- The OpenTelemetry export carries timings, tokens and routes, not prompts or passages, so debugging a bad answer still needs our own dashboard (in `full` mode). The eval judge's model calls are not exported, only the turns.
+- By default the OpenTelemetry export carries decisions, positions, timings and tokens but no text, so reading a bad answer needs our own dashboard in `full` mode, or `OTEL_TRACE_TEXT=true` locally. The eval judge's model calls are not exported, only the turns.
 
 **Technical limits**
 

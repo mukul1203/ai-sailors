@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E4
     InMemorySpanExporter,
 )
 
-from llm_helpers import AgentLLM, plan  # noqa: E402
+from llm_helpers import AgentLLM, ScriptedLLM, plan  # noqa: E402
 from storyquest import telemetry  # noqa: E402
 from storyquest.agent.context import AgentContext  # noqa: E402
 from storyquest.agent.modes import get_mode  # noqa: E402
@@ -49,13 +49,18 @@ def test_an_agent_turn_becomes_one_trace_with_a_span_per_call(
 ) -> None:
     result = _agent_turn(make_ctx)
     by_name = {s.name: s for s in spans.get_finished_spans()}
-    assert set(by_name) == {"turn", "router", "planner", "tool search_book", "generate", "critic"}
+    assert {"turn", "router", "planner", "tool search_book", "generate", "critic"} <= set(by_name)
+    assert "guard" in by_name  # stages that are not model calls show on the timeline too
     root = by_name["turn"]
     assert root.parent is None
     assert root.attributes is not None
     assert root.attributes["storyquest.mode"] == "M5"
     assert root.attributes["storyquest.route"] == "story_question"
-    assert root.attributes["storyquest.chapter"] == 0 and root.attributes["storyquest.beat"] == 1
+    assert root.attributes["storyquest.chapter"] == 1 and root.attributes["storyquest.part"] == 2
+    assert root.attributes["storyquest.outcome"] == "answer"
+    assert root.attributes["storyquest.grounded"] is True
+    passages = root.attributes["storyquest.passages"]
+    assert isinstance(passages, tuple) and passages and passages[0].startswith("chapter 1 part")
     assert root.attributes["gen_ai.usage.input_tokens"] == result.prompt_tokens
     for name, span in by_name.items():
         if name != "turn":
@@ -65,8 +70,13 @@ def test_an_agent_turn_becomes_one_trace_with_a_span_per_call(
     generate = by_name["generate"].attributes
     assert generate is not None and generate["gen_ai.operation.name"] == "chat"
     assert generate["gen_ai.request.model"] == "fake"
+    assert generate["storyquest.evidence_ids"]
     tool = by_name["tool search_book"].attributes
     assert tool is not None and tool["gen_ai.tool.name"] == "search_book"
+    planner, critic = by_name["planner"].attributes, by_name["critic"].attributes
+    assert planner is not None and planner["storyquest.planner.tools"] == ("search_book",)
+    assert critic is not None and critic["storyquest.critic.verdict"] == "approve"
+    assert "storyquest.prompt" not in generate
 
 
 @pytest.mark.integration
@@ -88,6 +98,8 @@ def test_text_is_added_only_when_asked_for(
     assert root.attributes is not None
     assert root.attributes["storyquest.child_message"] == QUESTION
     assert root.attributes["storyquest.reply"] == result.reply
+    (gen,) = [s for s in spans.get_finished_spans() if s.name == "generate"]
+    assert gen.attributes is not None and "Shere Khan" in str(gen.attributes["storyquest.prompt"])
 
 
 def test_a_cached_call_takes_no_time_in_the_trace(spans: InMemorySpanExporter) -> None:
@@ -113,3 +125,32 @@ def test_a_broken_exporter_never_breaks_the_turn() -> None:
 
     turn = TurnResult("hi", "story_question", "M2S", started_at=1.0)
     telemetry.export_turn(turn, tracer=Broken())
+
+
+@pytest.mark.integration
+def test_a_fixed_reply_and_its_tags_are_searchable(
+    make_ctx: MakeCtx, spans: InMemorySpanExporter
+) -> None:
+    llm = AgentLLM(label="personal")
+    run_turn(
+        make_ctx(llm),
+        "I live at 5 Park Road",
+        Position(0, 0),
+        mode=get_mode("M5"),
+        trace_attributes={"storyquest.eval_item": "PII-001"},
+    )
+    (root,) = [s for s in spans.get_finished_spans() if s.name == "turn"]
+    assert root.attributes is not None
+    assert root.attributes["storyquest.eval_item"] == "PII-001"
+    assert (
+        root.attributes["storyquest.outcome"] == root.attributes["storyquest.route"] == "personal"
+    )
+
+
+@pytest.mark.integration
+def test_a_linear_turn_shows_its_search_and_checks(
+    make_ctx: MakeCtx, spans: InMemorySpanExporter
+) -> None:
+    run_turn(make_ctx(ScriptedLLM()), "Who is Tabaqui?", Position(0, 0), mode=get_mode("M1"))
+    names = [s.name for s in spans.get_finished_spans()]
+    assert {"turn", "guard", "router", "retrieval", "generate", "output_check"} <= set(names)

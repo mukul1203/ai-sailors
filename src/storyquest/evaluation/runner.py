@@ -78,7 +78,13 @@ def run_item(ctx: AgentContext, cleaned: Cleaned, item: GoldItem, mode: Mode) ->
     }
     if item.skip:
         return row
-    result = run_turn(ctx, item.input, item.position, mode=mode)
+    result = run_turn(
+        ctx,
+        item.input,
+        item.position,
+        mode=mode,
+        trace_attributes={"storyquest.eval_item": item.id},
+    )
     hits = _searched(ctx, item, mode, result)
     score = score_item(item, result, _retrieval_hit(cleaned, item, hits))
     row.update(

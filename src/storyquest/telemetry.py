@@ -5,20 +5,23 @@ Each turn becomes one trace: a `turn` span with one child span per model call (r
 generate, critic) and per tool call. Model calls use the OpenTelemetry GenAI names
 (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, ...), so any OTLP viewer shows them.
 
-By default no text leaves the app: spans carry the mode, route, flags, timings, tokens and models,
-but not the child's message, the reply, prompts or tool arguments. OTEL_TRACE_TEXT=true adds the
-message and the reply, for local debugging only. This matches TRACE_STORE=summary.
+By default no text leaves the app: spans carry the mode, route, outcome, flags, timings, tokens,
+models, the tools chosen, the critic's verdict, cited sentence ids and passage positions, but not
+the child's message, the reply, prompts or tool arguments. OTEL_TRACE_TEXT=true adds those, for
+local debugging only. This matches TRACE_STORE=summary.
 
 The turn is exported after it ends, from the timings the trace already records, so the agent code
 does not change and a failing exporter can never break a turn.
 """
 
 import atexit
+import json
 import logging
 import os
 from collections.abc import Mapping
 from typing import Any
 
+from storyquest.agent.replies import REPLIES
 from storyquest.agent.trace import StepTrace, ToolTrace, TurnResult
 
 log = logging.getLogger(__name__)
@@ -90,6 +93,53 @@ def export_turn(
         log.exception("could not export the turn to OpenTelemetry")
 
 
+def _json(text: str) -> dict[str, Any]:
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _step_attributes(step: StepTrace) -> dict[str, Any]:
+    """What a model call decided, without any text: the tools a planner chose, a critic's
+    verdict, the sentence ids an answer cited. Prompts and output only with OTEL_TRACE_TEXT."""
+    out: dict[str, Any] = {
+        "gen_ai.operation.name": "chat",
+        "gen_ai.request.model": step.model,
+        "gen_ai.response.model": step.model,
+        "gen_ai.usage.input_tokens": step.prompt_tokens,
+        "gen_ai.usage.output_tokens": step.completion_tokens,
+        "gen_ai.response.finish_reasons": [step.finish_reason or ""],
+        "storyquest.cached": step.cached,
+    }
+    data = _json(step.output)
+    if step.name == "router" and isinstance(data.get("label"), str):
+        out["storyquest.router.label"] = data["label"]
+    elif step.name == "planner" and isinstance(data.get("calls"), list):
+        out["storyquest.planner.tools"] = [
+            str(c.get("tool")) for c in data["calls"] if isinstance(c, dict)
+        ]
+    elif step.name == "critic" and isinstance(data.get("verdict"), str):
+        out["storyquest.critic.verdict"] = data["verdict"]
+    elif step.name == "generate" and isinstance(data.get("evidence"), list):
+        out["storyquest.evidence_ids"] = [str(e) for e in data["evidence"]]
+    if _text_allowed():
+        out["storyquest.prompt"] = "\n\n".join(
+            f"[{m['role']}] {m['content']}" for m in step.messages
+        )
+        out["storyquest.output"] = step.output
+    return out
+
+
+def _outcome(result: TurnResult) -> str:
+    """ "answer" for a written answer, else the name of the fixed reply the child got."""
+    for name, reply in REPLIES.items():
+        if result.reply == reply:
+            return name
+    return "answer"
+
+
 def _export(tracer: Any, result: TurnResult, attributes: Attributes, text: str) -> None:
     from opentelemetry import trace
     from opentelemetry.trace import Status, StatusCode
@@ -99,10 +149,15 @@ def _export(tracer: Any, result: TurnResult, attributes: Attributes, text: str) 
     attrs: dict[str, Any] = {
         "storyquest.mode": result.mode,
         "storyquest.route": result.route,
+        "storyquest.outcome": _outcome(result),
+        "storyquest.grounded": bool(result.evidence),
         "storyquest.flags": list(result.flags),
         "storyquest.model_calls": len(result.steps),
         "storyquest.tool_calls": len(result.tool_calls),
-        "storyquest.passages": len(result.passages),
+        "storyquest.passages": [
+            f"chapter {p.chapter_idx + 1} part {p.beat_idx + 1} #{p.idx} ({p.source})"
+            for p in result.passages
+        ],
         "gen_ai.usage.input_tokens": result.prompt_tokens,
         "gen_ai.usage.output_tokens": result.completion_tokens,
         **{f"storyquest.seconds.{stage}": s for stage, s in result.timings.items()},
@@ -112,24 +167,25 @@ def _export(tracer: Any, result: TurnResult, attributes: Attributes, text: str) 
         attrs["storyquest.child_message"] = text
         attrs["storyquest.reply"] = result.reply
     root = tracer.start_span("turn", start_time=_ns(start), attributes=attrs)
-    if result.route == "error":
-        root.set_status(Status(StatusCode.ERROR, "the turn ended with an error reply"))
+    for flag in result.flags:  # shown as logs on the turn, in the order they were raised
+        root.add_event(flag)
+    errors = [f for f in result.flags if f.startswith("llm_error")]
+    if result.route == "error" or errors:
+        root.set_status(Status(StatusCode.ERROR, errors[0] if errors else "error reply"))
     parent = trace.set_span_in_context(root)
+
+    for name, began, ended in result.stages:  # the stages that are not a model or tool call
+        if name in _CALL_STAGES:
+            continue
+        span = tracer.start_span(name, context=parent, start_time=_ns(began))
+        span.end(end_time=_ns(ended))
 
     for step in result.steps:
         span = tracer.start_span(
             step.name,
             context=parent,
             start_time=_ns(_step_start(step, start)),
-            attributes={
-                "gen_ai.operation.name": "chat",
-                "gen_ai.request.model": step.model,
-                "gen_ai.response.model": step.model,
-                "gen_ai.usage.input_tokens": step.prompt_tokens,
-                "gen_ai.usage.output_tokens": step.completion_tokens,
-                "gen_ai.response.finish_reasons": [step.finish_reason or ""],
-                "storyquest.cached": step.cached,
-            },
+            attributes=_step_attributes(step),
         )
         span.end(end_time=_ns(max(step.ended_at, _step_start(step, start))))
 
@@ -150,3 +206,7 @@ def _export(tracer: Any, result: TurnResult, attributes: Attributes, text: str) 
         span.end(end_time=_ns(call.ended_at))
 
     root.end(end_time=_ns(max(end, start)))
+
+
+# Stages that already appear as model or tool spans.
+_CALL_STAGES = {"router", "planner", "generate", "critic", "tools"}
