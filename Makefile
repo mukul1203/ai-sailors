@@ -315,7 +315,7 @@ eval-retrieval: _need-code ## Recall@k of keyword/meaning/hybrid search: make ev
 # eval/runs/final-<time>/ (tables.md holds the Markdown for the report). Slow: the endpoint
 # serves one request at a time for the whole group, so tell the group before running it.
 FINAL_MODES ?= M2S M4S M5
-PROMPT_MODES ?= M2S-FS M2S-COT M2S-DEC
+PROMPT_MODES ?= M2S-FS M2S-COT M2S-DEC M5-FS M5-COT
 final-eval: _need-code ## All report numbers in one go: make final-eval [FINAL_MODES="M2S M4S M5"]
 	@$(ENV) $(BIN)/storyquest eval preflight
 	@$(ENV) out="eval/runs/final-$$(date +%Y%m%d-%H%M%S)"; mkdir -p "$$out" \
@@ -328,10 +328,11 @@ final-eval: _need-code ## All report numbers in one go: make final-eval [FINAL_M
 	  && cat "$$out/retrieval-dev.txt" "$$out/tables.md" && echo "Saved in $$out"
 
 # Prompting comparison: the same search and grounding as M2S, with only the answer prompt
-# changed: few-shot examples (M2S-FS), reasoning first (M2S-COT), sub-questions first (M2S-DEC).
-# M2S itself is the zero-shot baseline, so run it alongside.
-eval-prompting: _need-code ## Compare prompting strategies on M2S: make eval-prompting [SPLIT=dev] [ARGS="..."]
-	@$(ENV) $(BIN)/storyquest eval run --modes "M2S $(PROMPT_MODES)" --split $(SPLIT) $(ARGS)
+# changed: few-shot examples (M2S-FS), reasoning first (M2S-COT), sub-questions first (M2S-DEC);
+# and the shipped agent with the same answer prompts (M5-FS, M5-COT). M2S and M5 are the
+# zero-shot baselines, so they run alongside.
+eval-prompting: _need-code ## Compare prompting strategies on M2S and M5: make eval-prompting [SPLIT=dev] [ARGS="..."]
+	@$(ENV) $(BIN)/storyquest eval run --modes "M2S M5 $(PROMPT_MODES)" --split $(SPLIT) $(ARGS)
 
 # Prompt injection planted in the book: each test adds a passage that carries an instruction,
 # asks a question that finds it, and checks the reply ignored it. The book is never changed.

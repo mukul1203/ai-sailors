@@ -8,7 +8,7 @@ from dataclasses import replace
 
 import pytest
 
-from llm_helpers import ScriptedLLM
+from llm_helpers import AgentLLM, ScriptedLLM
 from storyquest.agent.context import AgentContext
 from storyquest.agent.grounding import schema_for
 from storyquest.agent.modes import describe_steps, get_mode
@@ -98,3 +98,30 @@ def test_m2s_keeps_its_prompt_unchanged(make_ctx: MakeCtx) -> None:
     _ask(make_ctx, llm, "M2S")
     system = llm.generation_calls[0][0]["content"]
     assert "Lighthouse" not in system and "reasoning" not in system
+
+
+@pytestmark_integration
+@pytest.mark.parametrize(
+    ("name", "marker"), [("M5-FS", "The Lighthouse Cat"), ("M5-COT", "In reasoning")]
+)
+def test_the_agent_variants_change_only_the_answer_prompt(
+    make_ctx: MakeCtx, name: str, marker: str
+) -> None:
+    mode = get_mode(name)
+    assert mode.agentic and mode.grounded and mode.hybrid
+    llm = AgentLLM()
+    result = run_turn(make_ctx(llm), "Why does Shere Khan limp?", Position(0, 1), mode=mode)
+    assert result.reply == "Shere Khan was born lame in one foot."
+    assert llm.roles.count("generate") == 1 and "critic" in llm.roles
+    systems = {llm.role(m): m[0]["content"] for m in llm.calls}
+    assert marker in systems["generate"]
+    assert marker not in systems["planner"] and marker not in systems["critic"]
+
+
+@pytestmark_integration
+def test_m5_keeps_its_answer_prompt_unchanged(make_ctx: MakeCtx) -> None:
+    llm = AgentLLM()
+    run_turn(make_ctx(llm), "Why does Shere Khan limp?", Position(0, 1), mode=get_mode("M5"))
+    systems = {llm.role(m): m[0]["content"] for m in llm.calls}
+    assert "Lighthouse" not in systems["generate"] and "In reasoning" not in systems["generate"]
+    assert not get_mode("M5").thinks and get_mode("M5-COT").thinks

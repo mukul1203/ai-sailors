@@ -174,7 +174,12 @@ class _Run:
                 "anything the cited sentences do not say."
             )
         with timed(self.timings, "generate"):
-            result = generate(self.ctx, messages, schema=schema_for(self.passages))
+            result = generate(
+                self.ctx,
+                messages,
+                schema=schema_for(self.passages, self.mode.prompting),
+                thinking=self.mode.thinks,
+            )
         self.record(StepTrace.of("generate", messages, result))
         answer, problem, evidence = verify(result.text, self.passages)
         if answer is None:

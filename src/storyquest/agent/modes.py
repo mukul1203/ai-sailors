@@ -17,11 +17,23 @@ class Mode:
     # "chain-of-thought" (reason first) or "decomposition" (sub-questions first). Grounded only.
     prompting: str = "zero-shot"
 
+    @property
+    def thinks(self) -> bool:
+        """The answer writes reasoning or sub-questions before its evidence (more tokens)."""
+        return self.prompting in ("chain-of-thought", "decomposition")
+
 
 def _m2s(name: str, how: str, prompting: str) -> Mode:
     """M2S with another answer prompt: same retrieval and grounding, to compare prompting."""
     title = f"Hybrid retrieval + sentence evidence, {how}"
     return Mode(name, title, True, grounded=True, hybrid=True, prompting=prompting)
+
+
+def _m5(name: str, how: str, prompting: str) -> Mode:
+    """The agent loop with another answer prompt. No decomposition variant: the planner
+    already breaks the question down into tool calls."""
+    title = f"Agent loop, answer prompt with {how}"
+    return Mode(name, title, True, grounded=True, hybrid=True, agentic=True, prompting=prompting)
 
 
 MODES = {
@@ -69,6 +81,8 @@ MODES = {
         hybrid=True,
         agentic=True,
     ),
+    "M5-FS": _m5("M5-FS", "few-shot examples", "few-shot"),
+    "M5-COT": _m5("M5-COT", "reasoning first (chain of thought)", "chain-of-thought"),
 }
 
 
@@ -120,7 +134,9 @@ def describe_steps(mode: Mode, top_k: int) -> list[str]:
         "pre-written reply and the turn ends here.",
     ]
     if mode.agentic:
-        return [*steps, *_AGENT_STEPS]
+        agent = list(_AGENT_STEPS)
+        agent[2] = _GENERATE + _PROMPTING_STEP.get(mode.prompting, "")
+        return [*steps, *agent]
     if mode.retrieval:
         how = (
             "BM25 keyword ranking and embedding (meaning) similarity, combined by reciprocal "
