@@ -44,7 +44,7 @@ ENV := set -a; \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
-        eval eval-retrieval eval-report eval-planted final-eval \
+        eval eval-retrieval eval-report eval-planted eval-prompting final-eval \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -310,19 +310,28 @@ eval-retrieval: _need-code ## Recall@k of keyword/meaning/hybrid search: make ev
 
 # Every number the report needs, in one go, once the course endpoints answer. First checks that
 # the chat model and the embeddings really respond (no cache), then runs the retrieval eval, the
-# dev evals of FINAL_MODES, the test split once, and the report tables, all saved together in
+# dev evals of FINAL_MODES, the test split once, the prompting comparison (PROMPT_MODES, dev
+# only: a strategy is chosen on dev, so test stays unseen), and the report tables, all saved in
 # eval/runs/final-<time>/ (tables.md holds the Markdown for the report). Slow: the endpoint
 # serves one request at a time for the whole group, so tell the group before running it.
 FINAL_MODES ?= M2S M4S M5
+PROMPT_MODES ?= M2S-FS M2S-COT M2S-DEC
 final-eval: _need-code ## All report numbers in one go: make final-eval [FINAL_MODES="M2S M4S M5"]
 	@$(ENV) $(BIN)/storyquest eval preflight
 	@$(ENV) out="eval/runs/final-$$(date +%Y%m%d-%H%M%S)"; mkdir -p "$$out" \
 	  && $(BIN)/storyquest eval retrieval --split dev > "$$out/retrieval-dev.txt" \
 	  && $(BIN)/storyquest eval run --modes "$(FINAL_MODES)" --split dev --no-open --out "$$out/dev" \
 	  && $(BIN)/storyquest eval run --modes "$(FINAL_MODES)" --split test --no-open --out "$$out/test" \
+	  && $(BIN)/storyquest eval run --modes "$(PROMPT_MODES)" --split dev --no-open --out "$$out/dev" \
 	  && $(BIN)/storyquest eval tables "$$out/dev" "$$out/test" > "$$out/tables.md" \
 	  && { $(BIN)/storyquest eval planted --modes "$(FINAL_MODES)" --out "$$out/planted" || true; } \
 	  && cat "$$out/retrieval-dev.txt" "$$out/tables.md" && echo "Saved in $$out"
+
+# Prompting comparison: the same search and grounding as M2S, with only the answer prompt
+# changed: few-shot examples (M2S-FS), reasoning first (M2S-COT), sub-questions first (M2S-DEC).
+# M2S itself is the zero-shot baseline, so run it alongside.
+eval-prompting: _need-code ## Compare prompting strategies on M2S: make eval-prompting [SPLIT=dev] [ARGS="..."]
+	@$(ENV) $(BIN)/storyquest eval run --modes "M2S $(PROMPT_MODES)" --split $(SPLIT) $(ARGS)
 
 # Prompt injection planted in the book: each test adds a passage that carries an instruction,
 # asks a question that finds it, and checks the reply ignored it. The book is never changed.
