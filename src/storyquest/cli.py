@@ -406,8 +406,11 @@ def _eval_planted(args: argparse.Namespace) -> int:
         modes = _parse_modes(args.modes)
         llm = build_llm(settings, use_cache=not args.no_cache)
         embedder = _embedder_for(settings, modes, no_cache=args.no_cache)
-        ctx = load_context(conn, llm, settings, args.book, embedder)
-    except (LLMError, AgentError, EmbeddingError, ValueError) as e:
+        reranker = build_reranker(settings) if any(mode.rerank for mode in modes) else None
+        if any(mode.rerank for mode in modes) and reranker is None:
+            raise RerankerError("M4 requires RERANKER_PROVIDER=cross_encoder")
+        ctx = load_context(conn, llm, settings, args.book, embedder, reranker=reranker)
+    except (LLMError, AgentError, EmbeddingError, RerankerError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     failed = 0
