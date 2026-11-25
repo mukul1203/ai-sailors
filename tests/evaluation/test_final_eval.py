@@ -42,6 +42,8 @@ def run(mode: str, split: str, passed: list[bool]) -> tuple[dict, list[dict]]:  
             "skipped": None,
             "category": "CAN" if n % 2 else "SAF",
             "passed": ok,
+            "label": None if ok else "retrieval_miss",
+            "flags": ["tool_error"] if n == 0 else [],
             "retrieval_hit": ok if n % 2 else None,
             "fact_found": [ok],
             "faithfulness": 1.0 if ok else 0.5,
@@ -64,4 +66,20 @@ def test_the_tables_give_headline_numbers_and_categories() -> None:
     )
     assert "| CAN | 2/2 (100%) |" in text and "| SAF | 1/2 (50%) |" in text
     assert "FLO" not in text  # skipped items are not scored
+    assert "| Retrieval miss | 1 |" in text and "| Hallucination | 0 |" in text
+    assert "| Recovered tool-call problems (not failures) | 1 |" in text
     assert text.endswith("Embeddings and chat model: bge:384, Qwen/Qwen3-8B.")
+
+
+def test_every_failure_label_belongs_to_one_of_the_briefs_four_classes() -> None:
+    from storyquest.evaluation.glossary import CLASS_OF, FAILURE_CAUSES, FAILURE_CLASSES
+
+    assert set(CLASS_OF) == set(FAILURE_CAUSES)
+    assert list(FAILURE_CLASSES) == [
+        "Retrieval miss",
+        "Reasoning error",
+        "Tool-call error",
+        "Hallucination",
+    ]
+    labels = [label for group in FAILURE_CLASSES.values() for label in group]
+    assert len(labels) == len(set(labels))  # no label in two classes

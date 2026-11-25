@@ -9,12 +9,16 @@ from storyquest.evaluation.glossary import (
     BEHAVIOUR,
     CATEGORY_MEANING,
     FAILURE_CAUSES,
+    FAILURE_CLASSES,
     LEGEND,
     Row,
     category_name,
+    class_counts,
     explain,
     explain_flag,
+    failure_class,
     pct,
+    recovered_tool_calls,
     where,
 )
 from storyquest.evaluation.runner import (
@@ -179,13 +183,26 @@ def _summary_section(runs: list[Run]) -> str:
     counts = [
         Counter(r["label"] for r in rs if not r["skipped"] and not r["passed"]) for _, rs in runs
     ]
-    causes = sorted({k for c in counts for k in c}, key=lambda k: -sum(c[k] for c in counts))
-    cause_rows = [f"<tr><th>Why items failed</th>{head}</tr>"]
-    for k in causes:
-        meaning = escape(FAILURE_CAUSES.get(str(k), ""))
-        cells_html = "".join(f"<td class='num'>{c[k] or '&ndash;'}</td>" for c in counts)
+    classes = [class_counts(rs) for _, rs in runs]
+    recovered = [recovered_tool_calls(rs) for _, rs in runs]
+    cause_rows = [f"<tr><th>Why items failed (the brief's four classes)</th>{head}</tr>"]
+    for name, labels in FAILURE_CLASSES.items():
+        cells_html = "".join(f"<td class='num'><b>{c[name] or '&ndash;'}</b></td>" for c in classes)
+        cause_rows.append(f"<tr><td><b>{escape(name)}</b></td>{cells_html}</tr>")
+        for k in labels:
+            if not any(c[k] for c in counts):
+                continue
+            meaning = escape(FAILURE_CAUSES.get(k, ""))
+            cells_html = "".join(f"<td class='num'>{c[k] or '&ndash;'}</td>" for c in counts)
+            cause_rows.append(
+                f"<tr><td>&nbsp;&nbsp;{escape(k)}<div class='sub'>{meaning}</div></td>{cells_html}</tr>"
+            )
+    if any(recovered):
+        cells_html = "".join(f"<td class='num'>{n or '&ndash;'}</td>" for n in recovered)
         cause_rows.append(
-            f"<tr><td><b>{escape(str(k))}</b><div class='sub'>{meaning}</div></td>{cells_html}</tr>"
+            "<tr><td>Recovered tool-call problems<div class='sub'>Turns where a tool failed or a "
+            "plan or verdict was unreadable, and the agent recovered. Not failures; see the flags."
+            f"</div></td>{cells_html}</tr>"
         )
     return (
         "<h2 id='summary'>2. Results at a glance</h2>"
@@ -415,7 +432,11 @@ def _panel(config: Row, r: Row | None) -> str:
     if r is None or r["skipped"]:
         return f"<div class='panel'><b>{name}</b><p class='dim'>Not run.</p></div>"
     cls, word = ("pass", "PASS") if r["passed"] else ("fail", "FAIL")
-    tag = "" if r["passed"] else f"<span class='tag'>{escape(str(r['label']))}</span>"
+    tag = (
+        ""
+        if r["passed"]
+        else f"<span class='tag'>{escape(failure_class(r['label']))}: {escape(str(r['label']))}</span>"
+    )
     why = escape(explain(r, int(config["retrieval_top_k"])))
     return (
         f"<div class='panel {cls}'><b>{name}</b> <span class='badge {cls}'>{word}</span>{tag}"

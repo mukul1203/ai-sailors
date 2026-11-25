@@ -3,6 +3,7 @@
 from collections import Counter
 from statistics import mean
 
+from storyquest.evaluation.glossary import class_counts, failure_class, recovered_tool_calls
 from storyquest.evaluation.runner import (
     Row,
     fact_evidence_counts,
@@ -80,15 +81,24 @@ def summarize(config: Row, rows: list[Row]) -> str:
         )
 
     labels = Counter(r["label"] for r in ran if not r["passed"])
+    recovered = recovered_tool_calls(ran)
+    if labels or recovered:
+        classes = class_counts(ran)
+        out += ["", "Failures by class: " + ", ".join(f"{k} {v}" for k, v in classes.items())]
+        if recovered:
+            out.append(
+                f"  plus {recovered} items that hit a tool-call problem and recovered (see flags)"
+            )
     if labels:
-        out += ["", "Failures by cause: " + ", ".join(f"{k} {v}" for k, v in labels.most_common())]
+        out += ["Failures by cause: " + ", ".join(f"{k} {v}" for k, v in labels.most_common())]
         out.append("")
         for r in ran:
             if r["passed"]:
                 continue
             reply = " ".join(r["reply"].split())
             out += [
-                f"  {r['id']} [{r['label']}] {r['position']} {r['input'][:70]!r}",
+                f"  {r['id']} [{failure_class(r['label'])}: {r['label']}] {r['position']} "
+                f"{r['input'][:70]!r}",
                 f"      expected {r['expected']}; route {r['route']}; reply: {reply[:150]}",
                 f"      retrieval_hit={r['retrieval_hit']} facts={r['fact_coverage']}"
                 f" violations={r['violations']}",

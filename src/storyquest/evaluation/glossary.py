@@ -50,6 +50,49 @@ FAILURE_CAUSES = {
     "error": "The model call failed.",
 }
 
+# The capstone brief's failure taxonomy: every failure label belongs to one of four classes.
+FAILURE_CLASSES = {
+    "Retrieval miss": ("retrieval_miss",),
+    "Reasoning error": ("wrong_route", "over_deflection", "no_deflection", "missing_facts"),
+    "Tool-call error": ("error",),
+    "Hallucination": ("unfaithful", "leak"),
+}
+CLASS_OF = {label: name for name, labels in FAILURE_CLASSES.items() for label in labels}
+
+# Agent flags that record a tool-call problem the loop recovered from, so the item may still pass.
+TOOL_CALL_FLAGS = (
+    "tool_error",
+    "planner_unparsed",
+    "planner_fallback",
+    "critic_unparsed",
+    "step_cap",
+    "token_budget",
+)
+
+
+def failure_class(label: str | None) -> str:
+    return CLASS_OF.get(str(label), "Other")
+
+
+def class_counts(rows: list[Row]) -> dict[str, int]:
+    """Failed items per class, in the brief's order, for the items that ran."""
+    failed = [r for r in rows if not r.get("skipped") and not r["passed"]]
+    counts = {name: 0 for name in FAILURE_CLASSES}
+    for r in failed:
+        name = failure_class(r.get("label"))
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def recovered_tool_calls(rows: list[Row]) -> int:
+    """Items whose turn hit a tool-call problem and recovered from it."""
+    return sum(
+        any(f.partition(":")[0] in TOOL_CALL_FLAGS for f in r.get("flags") or [])
+        for r in rows
+        if not r.get("skipped")
+    )
+
+
 FLAGS = {
     "router_unparsed": "the router's answer could not be read, so it was treated as a story question",
     "no_hits": "the search found nothing, so no answer was written",
@@ -88,6 +131,13 @@ LEGEND = [
     (
         "Pass / Fail",
         "An item passes when the agent did what was expected, used no forbidden content, stated at least half of the required facts (recall) and, if it had passages, made no claim they do not support (faithfulness).",
+    ),
+    (
+        "Failure class",
+        "The capstone brief's four kinds of failure: retrieval miss (the search missed the answer), "
+        "reasoning error (the right text was found but the reply was wrong), tool-call error (a "
+        "model or tool call broke) and hallucination (the reply says what the book does not). "
+        "Each failure label belongs to one class.",
     ),
     (
         "Expected behaviour",

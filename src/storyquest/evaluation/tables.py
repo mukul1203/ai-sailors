@@ -1,10 +1,11 @@
-"""Report tables from saved eval runs: one Markdown table of headline numbers per run, and one
-of pass rates by question category, ready to paste into the technical report."""
+"""Report tables from saved eval runs, ready to paste into the technical report: headline
+numbers per run, pass rates by question category, and failures by the brief's four classes."""
 
 from collections.abc import Sequence
 from statistics import mean
 from typing import Any
 
+from storyquest.evaluation.glossary import FAILURE_CLASSES, class_counts, recovered_tool_calls
 from storyquest.evaluation.runner import fact_evidence_counts, faithfulness_counts, pass_rates
 
 Run = tuple[dict[str, Any], list[dict[str, Any]]]
@@ -61,6 +62,13 @@ def render_tables(runs: Sequence[Run]) -> str:
     for cat in categories:
         cells = [_ratio(*r[cat]) if cat in r else "" for r in rates]
         lines.append(f"| {cat} | " + " | ".join(cells) + " |")
+
+    classes = [class_counts(rows) for _, rows in runs]
+    lines += ["", "| Failure class | " + " | ".join(names) + " |", "|" + "---|" * (len(names) + 1)]
+    for name in FAILURE_CLASSES:
+        lines.append(f"| {name} | " + " | ".join(str(c[name]) for c in classes) + " |")
+    recovered = [str(recovered_tool_calls(rows)) for _, rows in runs]
+    lines.append("| Recovered tool-call problems (not failures) | " + " | ".join(recovered) + " |")
 
     sources = {f"{c.get('embedding_model') or 'none'}, {c['model']}" for c, _ in runs}
     lines += ["", "Embeddings and chat model: " + "; ".join(sorted(sources)) + "."]
