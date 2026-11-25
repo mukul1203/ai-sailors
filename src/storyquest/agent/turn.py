@@ -19,6 +19,7 @@ from storyquest.agent.trace import StepTrace, TurnResult, timed
 from storyquest.domain.position import Position
 from storyquest.models.llm import LLMError, LLMResult, Message
 from storyquest.stores.search import SearchHit
+from storyquest.telemetry import export_turn
 
 
 def _trace(name: str, messages: list[Message], r: LLMResult) -> StepTrace:
@@ -48,12 +49,22 @@ def run_turn(
     started_at, start = time.time(), time.monotonic()
     timings: dict[str, float] = {}
     result = _run(ctx, text, position, mode, timings, history)
-    return replace(
+    result = replace(
         result,
         started_at=started_at,
         total_latency_s=round(time.monotonic() - start, 4),
         timings=timings,
     )
+    export_turn(
+        result,
+        {
+            "storyquest.book_id": ctx.book.id,
+            "storyquest.chapter": position.chapter_idx,
+            "storyquest.beat": position.beat_idx,
+        },
+        text=text,
+    )
+    return result
 
 
 def _run(

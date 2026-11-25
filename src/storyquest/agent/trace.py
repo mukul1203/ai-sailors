@@ -51,6 +51,8 @@ class StepTrace:
     cached: bool
     model: str = ""
     finish_reason: str | None = None
+    # wall-clock time the call returned; steps are recorded as soon as they return
+    ended_at: float = field(default_factory=time.time, compare=False)
 
     @classmethod
     def of(cls, name: str, messages: list[Message], result: LLMResult) -> "StepTrace":
@@ -92,6 +94,7 @@ class ToolTrace:
     found: int  # passages returned
     latency_s: float
     error: str = ""  # why the tool failed, if it did; the turn carries on without it
+    ended_at: float = field(default_factory=time.time, compare=False)  # when it returned
 
     def to_dict(self) -> dict[str, Any]:
         return {
