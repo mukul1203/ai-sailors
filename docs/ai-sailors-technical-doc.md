@@ -26,6 +26,7 @@
   - [5.3 Why grounded answers](#53-why-grounded-answers)
   - [5.4 The agent loop (M5)](#54-the-agent-loop-m5)
   - [5.5 What we did to compensate for a small model](#55-what-we-did-to-compensate-for-a-small-model)
+  - [5.6 Prompting strategies compared](#56-prompting-strategies-compared)
 - [6. Model Layer, API, UI and Deployment](#6-model-layer-api-ui-and-deployment)
   - [6.1 Model layer (`src/storyquest/models/`)](#61-model-layer-srcstoryquestmodels)
   - [6.2 API (`src/storyquest/api/`)](#62-api-srcstoryquestapi)
@@ -71,7 +72,7 @@ Generic chatbots fail a child reading a specific book in five ways (`docs/mvp-pr
 | Requirement | How the project addresses it | Status |
 |---|---|---|
 | Specification and gold evaluation set of 60–100 items, before any code | 80-item golden set in 10 categories with line-level evidence, committed before the agent code (Section 7.1) | Done |
-| At least 3 prompting strategies compared | The modes compare plain prompting (M0), retrieval (M1, M2), structured output with cited evidence (the S modes) and decomposition by a planner (M5) (Section 5.2). A like-for-like comparison of few-shot, chain-of-thought and decomposition prompts on the same retrieval is not yet done | Partly |
+| At least 3 prompting strategies compared | Zero-shot, few-shot, chain-of-thought and decomposition prompts compared on the same retrieval and grounding (M2S, M2S-FS, M2S-COT, M2S-DEC; Section 5.6); the modes also compare plain prompting (M0), retrieval, structured output with cited evidence and a planner (M5) | Done, numbers [TBD] |
 | Real corpus, chunking experiments | One book (*The Jungle Book*, 201 passages). Embedding experiments with and without scene context (Section 4.5); chunk size itself was not varied | Partly |
 | Hybrid retrieval with reranker, citations, recall@k measured separately | BM25 + dense + RRF + cross-encoder, sentence-level citations; `make eval-retrieval` reports recall at 3, 6 and 10 for each method (Section 4.5) | Done |
 | Agentic layer: ≥3 tools, planner→executor→critic, state across turns, error handling | Mode M5: three read-only tools, a planner, a critic with one revision, session memory, a 10-step and 8,000-token cap, JSON schemas with retry (Section 5.4) | Done |
@@ -233,6 +234,7 @@ A turn (`src/storyquest/agent/turn.py::run_turn`) takes one of two paths after t
 | M1S | BM25 | | | | yes |
 | M2 | yes | yes | | | |
 | M2S | yes | yes | | | yes |
+| M2S-FS / M2S-COT / M2S-DEC | yes | yes | | | yes, with a few-shot, chain-of-thought or decomposition answer prompt (Section 5.6) |
 | M3 / M3S | yes | yes | yes | | S only |
 | M4 / M4S | yes | yes | yes | yes | S only |
 | M5 (agent loop) | the planner's tool calls (hybrid search, always including the question itself) | via `lookup_character` | | | yes |
@@ -273,7 +275,7 @@ router ─▶ planner ─▶ tools (1 to 3) ─▶ answer ─▶ code checks ─
 
 **Testing.** 37 tests run the loop end to end on the Jungle Book with a scripted model, one per path and guardrail (critic revision and rejection, unreadable plan, failing tool, model errors, step cap, token budget, spoiler names, memory over the API). The prompts were then checked on a real Qwen3-8B (local, see 5.5): router labels 6/6, planner rewrites of follow-ups 5/5, and the critic rejected an invented "a hunter shot him" answer.
 
-**Results.** [TBD: M5 against M2S on dev and test, from `make final-eval` on the course endpoint.] A local preview (same Qwen3-8B through Ollama, Gemini embeddings because the course endpoints were down; development numbers, not results) gave M5 32/47 against M2S's 30/47, answered 8/13 in-chapter questions against 6/13, and had 18/20 fully supported replies against 14/20, at about 3.3 model calls, 1.7 tool calls and 2,250 prompt tokens per question against 1.7 calls and 1,000 tokens.
+**Results.** [TBD: M5 against M2S on dev and test, from `make final-eval` on the course endpoint.] A local preview (same Qwen3-8B run locally through Ollama, Gemini embeddings; development numbers, not results, to be rerun on the course endpoint once development is final) gave M5 32/47 against M2S's 30/47, answered 8/13 in-chapter questions against 6/13, and had 18/20 fully supported replies against 14/20, at about 3.3 model calls, 1.7 tool calls and 2,250 prompt tokens per question against 1.7 calls and 1,000 tokens.
 
 ### 5.5 What we did to compensate for a small model
 
@@ -292,6 +294,30 @@ The template grades this question directly. Each row is a weakness we observed i
 | The same model judges its own answers | Deterministic checks first, claim-level judging, hand review recommended | Section 7 |
 
 Local development used the same Qwen3-8B through Ollama with thinking switched off, because the course model answers without thinking; only runs on the course endpoint are reported as results.
+
+### 5.6 Prompting strategies compared
+
+To measure prompting on its own, three variants of M2S keep its hybrid search, its top 6 passages, its numbered sentences and its code check of the cited ids, and change only the answer prompt (`agent/prompts/strategy_*.txt`). Any difference in the results therefore comes from the prompting alone.
+
+| Mode | Strategy | What the prompt adds |
+|---|---|---|
+| M2S | Zero-shot | The rules only (the baseline) |
+| M2S-FS | Few-shot | Three worked examples: an answer, "I don't know that yet" when the passages do not say, and a question that mixes in a film. They come from an invented story, so they cannot leak answers to the golden set |
+| M2S-COT | Chain of thought | A `reasoning` field before the evidence: what the question asks, which sentences bear on it, and whether they answer it |
+| M2S-DEC | Decomposition | A `sub_questions` field before the evidence: 1 to 3 smaller questions, each with what the passages say about it |
+
+The reasoning and the sub-questions are part of the JSON schema, so they are written before the evidence and the answer, and code never shows them to the child. They get 250 more output tokens. The variants run on the dev split only (`make eval-prompting`, and in `make final-eval`): a strategy is chosen on dev, so the test split stays unseen. The agent (M5) is a fifth, multi-call form of decomposition: a separate planner breaks the question into tool calls.
+
+**Results.** [TBD: the four strategies on the course endpoint, from `make final-eval`.] A local preview (same Qwen3-8B run locally through Ollama, Gemini embeddings; development numbers, not results, to be rerun on the course endpoint once development is final), 47 dev questions each:
+
+| Strategy | Passed | Faithful replies | "I don't know that yet" | Prompt tokens | Seconds | Reasoning errors | Hallucinations |
+|---|---|---|---|---|---|---|---|
+| Zero-shot (M2S) | 30/47 | 14/20 (70%) | 13 | 997 | 1.9 | 11 | 5 |
+| Few-shot (M2S-FS) | 30/47 | 20/25 (80%) | 8 | 1,238 | 2.0 | 10 | 6 |
+| Chain of thought (M2S-COT) | 31/47 | 17/22 (77%) | 11 | 1,036 | 3.2 | 11 | 4 |
+| Decomposition (M2S-DEC) | 29/47 | 15/20 (75%) | 14 | 1,068 | 4.1 | 13 | 4 |
+
+All four find the same passages (22/23 gold passages), so only the answer step differs. The pass rates are within two questions of each other, and each variant fixed 3 or 4 questions that zero-shot failed while breaking 3 or 4 that it passed: on 47 questions this is noise, not a winner. The differences are in how the model answers. Few-shot answered more often (8 "I don't know that yet" against 13) and more of its replies were fully supported by the cited sentences, for about 24% more prompt tokens. Chain of thought got every film mix-up and out-of-book question right (8/8 against 6/8) and had the fewest hallucinations, at 1.7 times the latency. Decomposition was the slowest and refused most often: for short questions about one passage, splitting the question adds steps without adding information. With a small model and cited-sentence answers, finding the right passage matters more than how the instruction is phrased; we keep the zero-shot prompt in M2S and M5 unless the course-endpoint run shows a clear gain.
 
 ---
 
@@ -512,7 +538,7 @@ The router and output check use no free-form generation for refusals, so a defle
 - One chapter of one book; the test split is unreported; five items are skipped.
 - The capstone brief suggests a corpus of 500–2,000 documents, and only the Jungle Book fixture is committed. Ingestion of other books is supported but not evaluated.
 - The judge is the same model as the generator, and its thresholds are hand-picked.
-- Prompting strategies (few-shot, chain-of-thought, decomposition) are not compared on the same retrieval; the modes vary retrieval and grounding.
+- The prompting comparison (Section 5.6) uses 47 dev questions, too few to separate strategies that differ by one or two questions; it varies only the answer prompt of M2S, not the planner or critic prompts of M5.
 - Chunk size was fixed at about 500 characters; only the embedding context was varied.
 
 **Observability**
@@ -530,8 +556,8 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Next steps**
 
-1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once) and fill the [TBD] numbers in the abstract, 4.5, 5.4, 7.4 and 8.
-2. Compare few-shot, chain-of-thought and decomposition prompts on the same retrieval; add a chunk-size comparison.
+1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once, and the prompting comparison on dev) and fill the [TBD] numbers in the abstract, 4.5, 5.4, 5.6, 7.4 and 8.
+2. Add a chunk-size comparison; try few-shot examples in the M5 planner and critic prompts.
 3. Add a second book and a second eval fixture.
 4. Add a small authenticated parent area and automated session purging.
 5. Replace the same-model judge, or add a human-labelled subset to calibrate it.
@@ -569,7 +595,7 @@ The router and output check use no free-form generation for refusals, so a defle
 | Run the app locally | `make dev-api` (http://localhost:8000) |
 | Run in containers | `make up` |
 | Ingest a book | `make ingest-llm`, `make review`, `make approve`, `make publish` |
-| Evaluate | `make eval`, `make eval-retrieval` (retrieval only, no chat model), `make eval-planted` (injection planted in the book), `make eval-report` |
+| Evaluate | `make eval`, `make eval-retrieval` (retrieval only, no chat model), `make eval-planted` (injection planted in the book), `make eval-prompting` (prompting strategies on M2S), `make eval-report` |
 | Every report number at once | `make final-eval` (checks the endpoints answer first) |
 | Try the agent | `make ask BOOK=236 Q="..." MODE=M5 ARGS="--chapter 0 --beat 1"` |
 | Quality gate | `make check` |
