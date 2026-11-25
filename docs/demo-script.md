@@ -9,7 +9,7 @@ script is about 9 minutes, leaving a minute for slack.
 2. Publish the Jungle Book in the data folder you will demo from (`make publish BOOK=236`, or
    the Review tab) and run `make embed BOOK=236` once. An unpublished book is not listed on
    the Play tab.
-3. Set in `.env` for the demo: `PLAY_MODE=M5` (or the mode the final eval favours),
+3. Set in `.env` for the demo: `PLAY_MODE=M5` (already the default in `config.env`),
    `TRACE_DASHBOARD=true`, `ADMIN_TOKEN=<a fresh secret>`, `API_DEBUG=false`.
 4. `make build-web`, then `make dev-api`, and open http://localhost:8000.
 5. **Rehearse every question below once.** Answers are cached, so on stage the same questions

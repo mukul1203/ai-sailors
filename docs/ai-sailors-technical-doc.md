@@ -494,7 +494,7 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Evaluation gaps**
 
-- The reranker's retrieval effect is measured (Section 4.5) and does not help at the top 6; its end-to-end pass rate is still to come from `make final-eval`, although `config.env` sets `PLAY_MODE=M4S`.
+- The reranker's retrieval effect is measured (Section 4.5) and does not help at the top 6; its end-to-end pass rate is still to come from `make final-eval`. The game plays mode M5 (`PLAY_MODE=M5`), the mode that meets the brief's agentic requirement; the other modes are its baselines.
 - One chapter of one book; the test split is unreported; five items are skipped.
 - The capstone brief suggests a corpus of 500–2,000 documents, and only the Jungle Book fixture is committed. Ingestion of other books is supported but not evaluated.
 - The judge is the same model as the generator, and its thresholds are hand-picked.
@@ -517,7 +517,7 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Next steps**
 
-1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once) and fill the [TBD] numbers in the abstract, 4.5, 5.4 and 7.4; then choose the play mode from them.
+1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once) and fill the [TBD] numbers in the abstract, 4.5, 5.4 and 7.4.
 2. Compare few-shot, chain-of-thought and decomposition prompts on the same retrieval; add a poisoned-passage injection test and a chunk-size comparison.
 3. Add a second book and a second eval fixture.
 4. Add a small authenticated parent area and automated session purging.
@@ -542,7 +542,7 @@ The router and output check use no free-form generation for refusals, so a defle
 | `GENERATION_MAX_TOKENS` | 200 |
 | `MAX_CHILD_INPUT_CHARS` | 300 |
 | `MAX_QUESTIONS_PER_SESSION` / `ASK_MIN_INTERVAL_SECONDS` | 10 / 2 |
-| `PLAY_MODE` | `M4S` (set in `config.env`) |
+| `PLAY_MODE` | `M5` (set in `config.env`) |
 | `TRACE_STORE` / `TRACE_DASHBOARD` / `TRACE_RETENTION_DAYS` | `summary` / `false` / 30 |
 | `ADMIN_TOKEN` | unset (in `.env`; needed to open the trace dashboard) |
 
