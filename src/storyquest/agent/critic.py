@@ -7,6 +7,7 @@ is not in the sentences" or "this does not answer the question".
 """
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,7 +17,11 @@ from storyquest.agent.trace import StepTrace
 from storyquest.models.llm import LLMClient, Message
 
 MAX_PROBLEM_CHARS = 200
-MAX_TOKENS = 120
+# The course endpoint can spend most of a small budget before the JSON closes (seen on 25 Nov:
+# '{"verdict": "approve"' and then the 120-token limit), so the critic gets room to finish.
+MAX_TOKENS = 400
+_VERDICT = re.compile(r'"verdict"\s*:\s*"(approve|revise)"')
+_PROBLEM = re.compile(r'"problem"\s*:\s*"((?:[^"\\]|\\.)*)')
 
 SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -40,11 +45,18 @@ def parse_critique(raw: str) -> Critique | None:
     try:
         data = json.loads(raw)
         verdict = data["verdict"]
+        problem = str(data.get("problem") or "")
     except (ValueError, KeyError, TypeError):
-        return None
+        # Cut off before the JSON closed: the verdict comes first, so it can still be read.
+        found = _VERDICT.search(raw or "")
+        if found is None:
+            return None
+        verdict = found.group(1)
+        partial = _PROBLEM.search(raw)
+        problem = partial.group(1) if partial else ""
     if verdict not in ("approve", "revise"):
         return None
-    problem = str(data.get("problem") or "").strip()[:MAX_PROBLEM_CHARS]
+    problem = problem.strip()[:MAX_PROBLEM_CHARS]
     return Critique(verdict == "approve", "" if verdict == "approve" else problem)
 
 

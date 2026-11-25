@@ -25,6 +25,14 @@ def test_a_long_problem_is_cut_and_a_bad_answer_is_unreadable() -> None:
         assert parse_critique(raw) is None
 
 
+def test_a_verdict_cut_off_by_the_token_limit_is_still_read() -> None:
+    # what the course endpoint returned on 25 Nov: the limit hit before the JSON closed
+    assert parse_critique('{\n  "verdict": "approve"') == Critique(True, "")
+    cut = parse_critique('{"verdict": "revise", "problem": "The book does not say he dies')
+    assert cut == Critique(False, "The book does not say he dies")
+    assert parse_critique('{\n  "verd') is None
+
+
 def test_the_critic_sees_the_question_the_passages_the_sentences_and_the_answer() -> None:
     llm = FakeClient(verdict("approve"))
     passages = "Father Wolf looked up. It was the jackal, Tabaqui."
