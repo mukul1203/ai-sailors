@@ -100,6 +100,7 @@ FLAGS = {
     "ungrounded": 'the evidence check failed, so the reply became "I don\'t know that yet"',
     "banned_term": "the reply mentioned a film or cartoon term, so it was replaced by a safe reply",
     "later_name": "the reply used a name from later in the book, so it was replaced by a safe reply",
+    "ending_talk": "the reply talked about how the book ends, so it was replaced by a safe reply",
     "llm_error": "a model call failed",
     # the agent loop (mode M5)
     "planner_unparsed": "the planner's answer could not be read, so it was asked again",

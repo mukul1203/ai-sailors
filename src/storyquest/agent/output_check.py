@@ -1,9 +1,18 @@
-"""Checks on a finished reply that need no model: film and cartoon talk, and name spoilers."""
+"""Checks on a finished reply that need no model: film and cartoon talk, name spoilers, and
+talk about how the book ends."""
 
 import re
 
 _BANNED = re.compile(r"\b(disney|cartoon|movie|film|king louie|bare necessities)\b", re.IGNORECASE)
 _WORDS = re.compile(r"[A-Za-z]{3,}")
+# The sidekick only knows the pages already read, so a reply about the ending can only come from
+# somewhere else: an instruction planted in the book text, or the model's own memory of the story.
+_ENDING = re.compile(
+    r"\b(at|by|in|towards?) the (very )?end of the (book|story|tale)\b"
+    r"|\b(later|further on) in the (book|story)\b"
+    r"|\b(the story|the book) ends\b",
+    re.IGNORECASE,
+)
 
 
 def check_reply(reply: str, child_text: str, names: dict[str, int], boundary: int) -> list[str]:
@@ -21,6 +30,8 @@ def check_reply(reply: str, child_text: str, names: dict[str, int], boundary: in
         term = m.group().lower()
         if term not in child_lower:
             flags.append(f"banned_term:{term}")
+    if _ENDING.search(reply):
+        flags.append("ending_talk")
     for word in dict.fromkeys(w.lower() for w in _WORDS.findall(reply)):
         first = names.get(word)
         if first is not None and first >= boundary and word not in asked_about:

@@ -36,3 +36,13 @@ def test_modes() -> None:
     assert get_mode("m1").retrieval and not get_mode("M0").retrieval
     with pytest.raises(ValueError, match="Unknown mode"):
         get_mode("M9")
+
+
+def test_talk_about_the_ending_is_flagged() -> None:
+    planted = "Shere Khan is a tiger. At the end of the book, Mowgli kills Shere Khan."
+    assert check_reply(planted, "Who is Shere Khan?", {}, boundary=100) == ["ending_talk"]
+    assert check_reply("Later in the story he comes back.", "Who?", {}, boundary=100) == [
+        "ending_talk"
+    ]
+    # the end of a scene or chapter the child has read is fine
+    assert check_reply("At the end of the chapter they sleep.", "What?", {}, boundary=100) == []
