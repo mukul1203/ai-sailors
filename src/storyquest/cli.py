@@ -433,6 +433,28 @@ def _eval_tables(args: argparse.Namespace) -> int:
     return 0
 
 
+def _eval_review(args: argparse.Namespace) -> int:
+    """A sheet of answers for a person to check: every failure and a sample of passes."""
+    from storyquest.evaluation.review import sample, write_sheet
+
+    runs = [run for folder in args.folders for run in load_batch(Path(folder))]
+    rows = sample(runs, passes_per_run=args.passes)
+    out = Path(args.out)
+    write_sheet(rows, out)
+    print(f"{len(rows)} answers to review in {out}. Fill the 'acceptable' column with yes or no,")
+    print(f"then: storyquest eval calibrate {' '.join(args.folders)} --sheet {out}")
+    return 0
+
+
+def _eval_calibrate(args: argparse.Namespace) -> int:
+    """How often the judge agreed with the person, and the person-checked pass rates."""
+    from storyquest.evaluation.review import read_verdicts, render_calibration
+
+    runs = [run for folder in args.folders for run in load_batch(Path(folder))]
+    print(render_calibration(runs, read_verdicts(Path(args.sheet))))
+    return 0
+
+
 def _eval_retrieval(args: argparse.Namespace) -> int:
     """Recall@k of keyword, meaning and hybrid search on the golden set; no chat-model calls."""
     settings, conn = _open_content()
@@ -606,6 +628,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     plt.add_argument("--out", help="folder to save the results in")
     tab = ev.add_parser("tables", help="Markdown tables of saved runs, for the report")
     tab.add_argument("folders", nargs="+", help="run or batch folders under eval/runs")
+    rev = ev.add_parser("review", help="A sheet of answers for a person to check the judge with")
+    rev.add_argument("folders", nargs="+", help="run or batch folders under eval/runs")
+    rev.add_argument("--out", required=True, help="the CSV sheet to write")
+    rev.add_argument("--passes", type=int, default=8, help="passed answers to sample per run")
+    cal = ev.add_parser("calibrate", help="Judge agreement with a person, from a filled sheet")
+    cal.add_argument("folders", nargs="+", help="the same folders the sheet was made from")
+    cal.add_argument("--sheet", required=True, help="the filled review sheet")
     ret = ev.add_parser(
         "retrieval", help="Recall@k of keyword, meaning and hybrid search (no chat-model calls)"
     )
@@ -670,6 +699,8 @@ def _dispatch(args: argparse.Namespace) -> int:
             "preflight": _eval_preflight,
             "planted": _eval_planted,
             "tables": _eval_tables,
+            "review": _eval_review,
+            "calibrate": _eval_calibrate,
         }
         return commands[args.eval_command](args)
     return 2
