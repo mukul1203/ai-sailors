@@ -39,6 +39,7 @@
   - [7.2 Runner and scoring](#72-runner-and-scoring)
   - [7.3 Failure taxonomy](#73-failure-taxonomy)
   - [7.4 Results](#74-results)
+  - [7.5 Calibrating the judge against a person](#75-calibrating-the-judge-against-a-person)
 - [8. Responsible AI and Safety](#8-responsible-ai-and-safety)
 - [9. Limitations and Future Work](#9-limitations-and-future-work)
 - [Appendix A. Key Configuration](#appendix-a-key-configuration)
@@ -510,6 +511,12 @@ Stored run `20261116-213024`, dev split, 47 items run (commit e9e9ae0):
 - The judge is the same Qwen3-8B that writes the answers, so verdicts are noisy, and a 100% faithfulness bar can fail on a single wrong verdict.
 - The evaluation covers one chapter of one book. The test split has not been reported.
 
+### 7.5 Calibrating the judge against a person
+
+The judge is the same Qwen3-8B that writes the answers, so its verdicts were checked against a person once, as production teams do before trusting an automatic judge. `make final-eval` writes a review sheet (`review.csv`) of every failed answer of the final modes on the dev split, plus 8 passed answers per mode chosen at random (to catch answers the judge let through). For each row a person decides whether the reply is a good answer for a child at that point in the book, and writes yes or no in the `acceptable` column. The sheet also carries the question, the gold facts, the reply, the cited sentences, the judge's verdict in the failure taxonomy and a suggested verdict with a reason; the suggestion only speeds up reading and is never scored. `make eval-calibrate` then reports, per mode, how often the judge agreed with the person, how many failures the person accepted and how many passes they rejected, and the pass rate with the person's verdicts in place of the judge's (answers nobody reviewed keep the judge's verdict). Both pass rates are reported; the judge's stays the headline number.
+
+**[TBD: the calibration table from `make eval-calibrate` on the final run's sheet.]** A dry run of the method on the local preview sheet (48 answers of M2S and M5) found the main disagreements in two places: answers that state the needed facts in a child's words but miss a detail of the gold wording (for example "Bagheera gave a bull" for "a fat bull, newly killed"), and spoiler or out-of-book items where the reply only uses what the child has already read but the golden set expects a deflection. Real failures were confirmed in both directions: invented details ("gentle skin"), retrieval misses (Raksha) and fair questions refused by the critic or the router.
+
 ---
 
 ## 8. Responsible AI and Safety
@@ -560,7 +567,7 @@ The router and output check use no free-form generation for refusals, so a defle
 - The reranker's retrieval effect is measured (Section 4.5) and does not help at the top 6; its end-to-end pass rate is still to come from `make final-eval`. The game plays mode M5 (`PLAY_MODE=M5`), the mode that meets the brief's agentic requirement; the other modes are its baselines.
 - One chapter of one book; the test split is unreported; five items are skipped.
 - The capstone brief suggests a corpus of 500–2,000 documents, and only the Jungle Book fixture is committed. Ingestion of other books is supported but not evaluated.
-- The judge is the same model as the generator, and its thresholds are hand-picked.
+- The judge is the same model as the generator, and its thresholds are hand-picked; it is calibrated once against a person on a sample (Section 7.5), not on every run.
 - The prompting comparison (Section 5.6) uses 47 dev questions, too few to separate strategies that differ by one or two questions; it varies only the answer prompt of M2S, not the planner or critic prompts of M5.
 - Chunk size was fixed at about 500 characters; only the embedding context was varied.
 
@@ -579,11 +586,11 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Next steps**
 
-1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once, and the prompting comparison on dev) and fill the [TBD] numbers in the abstract, 4.5, 5.4, 5.6, 7.4 and 8.
+1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once, and the prompting comparison on dev) and fill the [TBD] numbers in the abstract, 4.5, 5.4, 5.6, 7.4, 7.5 and 8 (7.5 after a person fills the review sheet).
 2. Add a chunk-size comparison; try few-shot examples in the M5 planner and critic prompts.
 3. Add a second book and a second eval fixture.
 4. Add a small authenticated parent area and automated session purging.
-5. Replace the same-model judge, or add a human-labelled subset to calibrate it.
+5. Repeat the judge calibration (Section 7.5) whenever prompts or the model change, or use a stronger judge model.
 6. Add CI running `make check`.
 7. Replace the linear scan with an approximate index if the corpus grows.
 
@@ -620,7 +627,7 @@ The router and output check use no free-form generation for refusals, so a defle
 | Run the app locally | `make dev-api` (http://localhost:8000) |
 | Run in containers | `make up` |
 | Ingest a book | `make ingest-llm`, `make review`, `make approve`, `make publish` |
-| Evaluate | `make eval`, `make eval-retrieval` (retrieval only, no chat model), `make eval-planted` (injection planted in the book), `make eval-prompting` (prompting strategies on M2S), `make eval-report`, `make jaeger` (local OpenTelemetry viewer) |
+| Evaluate | `make eval`, `make eval-retrieval` (retrieval only, no chat model), `make eval-planted` (injection planted in the book), `make eval-prompting` (prompting strategies on M2S), `make eval-review` / `make eval-calibrate` (checking the judge against a person), `make eval-report`, `make jaeger` (local OpenTelemetry viewer) |
 | Every report number at once | `make final-eval` (checks the endpoints answer first) |
 | Try the agent | `make ask BOOK=236 Q="..." MODE=M5 ARGS="--chapter 0 --beat 1"` |
 | Quality gate | `make check` |

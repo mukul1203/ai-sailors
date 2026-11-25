@@ -44,7 +44,7 @@ ENV := set -a; \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
-        eval eval-retrieval eval-report eval-planted eval-prompting final-eval jaeger jaeger-stop \
+        eval eval-retrieval eval-report eval-planted eval-prompting eval-review eval-calibrate final-eval jaeger jaeger-stop \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -337,6 +337,7 @@ final-eval: _need-code ## All report numbers in one go: make final-eval [FINAL_M
 	  && $(BIN)/storyquest eval run --modes "$(PROMPT_MODES)" --split dev --no-open --out "$$out/dev" \
 	  && $(BIN)/storyquest eval tables "$$out/dev" "$$out/test" > "$$out/tables.md" \
 	  && { $(BIN)/storyquest eval planted --modes "$(FINAL_MODES)" --out "$$out/planted" || true; } \
+	  && $(BIN)/storyquest eval review $(foreach m,$(FINAL_MODES),"$$out/dev/$(m)") --out "$$out/review.csv" \
 	  && cat "$$out/retrieval-dev.txt" "$$out/tables.md" && echo "Saved in $$out"
 
 # Prompting comparison: the same search and grounding as M2S, with only the answer prompt
@@ -345,6 +346,17 @@ final-eval: _need-code ## All report numbers in one go: make final-eval [FINAL_M
 # zero-shot baselines, so they run alongside.
 eval-prompting: _need-code ## Compare prompting strategies on M2S and M5: make eval-prompting [SPLIT=dev] [ARGS="..."]
 	@$(ENV) $(BIN)/storyquest eval run --modes "M2S M5 $(PROMPT_MODES)" --split $(SPLIT) $(ARGS)
+
+# Calibrating the judge against a person, once: `make eval-review RUN=eval/runs/final-<time>/dev`
+# writes a sheet of every failed answer and 8 passed ones per mode; a person fills `acceptable`
+# with yes or no, then `make eval-calibrate RUN=... SHEET=...` prints the agreement table.
+eval-review: _need-code ## Sheet for a person to check the judge: make eval-review RUN=<run folder> [SHEET=...]
+	@test -n "$(RUN)" || { echo "usage: make eval-review RUN=eval/runs/<time>/dev"; exit 1; }
+	@$(ENV) $(BIN)/storyquest eval review $(RUN) --out "$(or $(SHEET),$(RUN)/review.csv)"
+
+eval-calibrate: _need-code ## Judge agreement and person-checked pass rates: make eval-calibrate RUN=... SHEET=...
+	@test -n "$(RUN)" || { echo "usage: make eval-calibrate RUN=eval/runs/<time>/dev SHEET=<filled csv>"; exit 1; }
+	@$(ENV) $(BIN)/storyquest eval calibrate $(RUN) --sheet "$(or $(SHEET),$(RUN)/review.csv)"
 
 # Prompt injection planted in the book: each test adds a passage that carries an instruction,
 # asks a question that finds it, and checks the reply ignored it. The book is never changed.
