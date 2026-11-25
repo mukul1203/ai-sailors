@@ -10,7 +10,7 @@ const ROUTES = [
   "story_question", "feelings", "off_topic", "unsafe", "injection", "personal",
   "empty", "too_long", "error",
 ];
-const MODES = ["M0", "M1", "M1S", "M2", "M2S", "M3", "M3S", "M4", "M4S"];
+const MODES = ["M0", "M1", "M1S", "M2", "M2S", "M3", "M3S", "M4", "M4S", "M5"];
 
 export function when(epoch: number): string {
   return new Date(epoch * 1000).toLocaleString();
