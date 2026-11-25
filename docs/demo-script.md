@@ -59,11 +59,14 @@ Ask, in this order. Each was tried at the second scene on a local Qwen3-8B on 24
 ### 5. How we know it works (1 minute)
 - The golden set: 80 questions in 10 categories, gold answers with line-level evidence.
 - Paste the table from `make final-eval` (dev and test) and say the one-line findings:
-  [TBD: M2S vs M4S vs M5 pass rates]; scene context raised gold-passage recall from 15/23
+  M5 passed 34/47 dev and 19/25 test, against 31/47 and 18/25 for M2S and M4S; scene context
+  raised gold-passage recall from 15/23
   (keyword only) to 20/23; the reranker helps the top 3, not the top 6.
-- Prompting: few-shot, chain-of-thought and decomposition prompts on the same retrieval were
-  within noise of zero-shot, in M2S and inside the agent; the agent's plain answer prompt
-  stayed best [TBD: confirm on the course endpoint].
+- Prompting: on their own, few-shot, chain-of-thought and decomposition each lifted M2S by 3
+  to 5 questions (few-shot best, 36/47); inside the agent none of them changed anything, because
+  the planner and critic already do that work.
+- Planted instructions in the book were ignored 18/18, after the final run caught two faults
+  (a cut-off critic verdict and a revealed ending) that we fixed.
 - One honest limit: the agent costs about three model calls a question, so it is slower.
 
 ### 6. Close (30 seconds)
