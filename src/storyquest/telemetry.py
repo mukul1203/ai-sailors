@@ -81,16 +81,18 @@ def _step_start(step: StepTrace | ToolTrace, turn_start: float) -> float:
 
 def export_turn(
     result: TurnResult, attributes: Attributes | None = None, *, tracer: Any = None, text: str = ""
-) -> None:
+) -> str:
     """Send one finished turn as a trace. `text` is the child's message (sent only when
-    OTEL_TRACE_TEXT is on). Never raises: tracing must not break a child's turn."""
+    OTEL_TRACE_TEXT is on). Returns the trace id (32 hex digits, as Jaeger shows it), or "" when
+    nothing was sent. Never raises: tracing must not break a child's turn."""
     tracer = tracer or _default_tracer()
     if tracer is None or not result.started_at:
-        return
+        return ""
     try:
-        _export(tracer, result, attributes or {}, text)
+        return _export(tracer, result, attributes or {}, text)
     except Exception:  # an exporter bug or a bad value must not reach the child
         log.exception("could not export the turn to OpenTelemetry")
+        return ""
 
 
 def _json(text: str) -> dict[str, Any]:
@@ -140,7 +142,7 @@ def _outcome(result: TurnResult) -> str:
     return "answer"
 
 
-def _export(tracer: Any, result: TurnResult, attributes: Attributes, text: str) -> None:
+def _export(tracer: Any, result: TurnResult, attributes: Attributes, text: str) -> str:
     from opentelemetry import trace
     from opentelemetry.trace import Status, StatusCode
 
@@ -206,6 +208,7 @@ def _export(tracer: Any, result: TurnResult, attributes: Attributes, text: str) 
         span.end(end_time=_ns(call.ended_at))
 
     root.end(end_time=_ns(max(end, start)))
+    return f"{root.get_span_context().trace_id:032x}"
 
 
 # Stages that already appear as model or tool spans.

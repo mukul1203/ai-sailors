@@ -96,6 +96,12 @@ export default function TraceDetail() {
         {when(q.data.created_at)} · mode {trace.mode} · {trace.total_latency_s.toFixed(2)} s ·{" "}
         {q.data.prompt_tokens + q.data.completion_tokens} tokens · stored as {q.data.stored}
       </p>
+      {trace.otel_trace_id && (
+        <p className="note">
+          OpenTelemetry trace <code>{trace.otel_trace_id}</code>
+          {q.data.otel_url && <> · <a href={q.data.otel_url} target="_blank" rel="noreferrer">open in Jaeger</a></>}
+        </p>
+      )}
 
       <div className="card">
         <h3>1. Question and route</h3>

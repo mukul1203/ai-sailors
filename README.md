@@ -213,7 +213,8 @@ same 8B model, so treat one- or two-question differences as noise.
 - OpenTelemetry (optional): `make jaeger` starts a local viewer (Docker or Podman), then run
   the app or an eval with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and open
   http://localhost:16686. Each question is one trace with a span per model and tool call; no
-  child text is sent unless `OTEL_TRACE_TEXT=true`.
+  child text is sent unless `OTEL_TRACE_TEXT=true`. To read the exact message, paste the trace
+  id Jaeger shows into the trace dashboard's "OpenTelemetry trace id" filter.
 - Runtime data (databases, model and embedding caches, eval runs) lives in `var/` and
   `eval/runs/`, both git-ignored. `make db-reset` deletes the databases; `make demo-data` rebuilds
   them.

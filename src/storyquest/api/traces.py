@@ -27,8 +27,9 @@ def _filter(
     until: float | None = None,
     min_latency: float | None = Query(None, ge=0),
     cached: bool | None = None,
+    otel_trace: str = Query("", max_length=32),
 ) -> TraceFilter:
-    return TraceFilter(mode, route, flag, since, until, min_latency, cached)
+    return TraceFilter(mode, route, flag, since, until, min_latency, cached, otel_trace)
 
 
 def _explain(trace: dict[str, Any], top_k: int) -> dict[str, Any]:
@@ -76,6 +77,12 @@ def build_router(
         trace = get_trace(app, trace_id)
         if trace is None:
             raise PlayError(404, "no_such_trace", "No such trace.")
-        return {**trace, "notes": _explain(trace, settings.retrieval_top_k)}
+        otel = trace["trace"].get("otel_trace_id") or ""
+        viewer = settings.otel_viewer_url.rstrip("/")
+        return {
+            **trace,
+            "notes": _explain(trace, settings.retrieval_top_k),
+            "otel_url": f"{viewer}/trace/{otel}" if otel and viewer else "",
+        }
 
     return router

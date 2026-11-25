@@ -63,7 +63,7 @@ def run_turn(
         timings=timings,
         stages=stages,
     )
-    export_turn(
+    trace_id = export_turn(
         result,
         {
             "storyquest.book_id": ctx.book.id,
@@ -74,7 +74,7 @@ def run_turn(
         },
         text=text,
     )
-    return result
+    return replace(result, otel_trace_id=trace_id) if trace_id else result
 
 
 def _run(

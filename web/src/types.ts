@@ -150,6 +150,7 @@ export interface TraceFilters {
   until?: number;
   min_latency?: number;
   cached?: boolean;
+  otel_trace?: string; // an OpenTelemetry trace id, or its first digits
 }
 
 export interface TraceStats {
@@ -217,6 +218,8 @@ export interface TraceDetail {
     flags: string[];
     evidence: string;
     tool_calls?: TraceToolCall[]; // agent mode (M5) only; absent in older traces
+    otel_trace_id?: string; // set when OpenTelemetry export was on
   };
   notes: { flags: Record<string, string>; pipeline: string[] };
+  otel_url: string; // a link to the trace in the OpenTelemetry viewer, when configured
 }

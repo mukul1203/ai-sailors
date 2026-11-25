@@ -27,9 +27,11 @@ export function Flags({ flags }: { flags: string[] }) {
 
 interface Form {
   mode: string; route: string; flag: string; minLatency: string; cached: string;
-  from: string; to: string;
+  from: string; to: string; otel: string;
 }
-const EMPTY: Form = { mode: "", route: "", flag: "", minLatency: "", cached: "", from: "", to: "" };
+const EMPTY: Form = {
+  mode: "", route: "", flag: "", minLatency: "", cached: "", from: "", to: "", otel: "",
+};
 
 function toFilters(f: Form): TraceFilters {
   const day = 86400;
@@ -43,6 +45,7 @@ function toFilters(f: Form): TraceFilters {
     cached: f.cached === "" ? undefined : f.cached === "yes",
     since: start,
     until: end,
+    otel_trace: f.otel.trim() || undefined,
   };
 }
 
@@ -122,6 +125,9 @@ export default function Traces() {
         </label>
         <label>Flag
           <input value={form.flag} placeholder="e.g. no_hits" onChange={(e) => set({ flag: e.target.value })} />
+        </label>
+        <label>OpenTelemetry trace id
+          <input value={form.otel} placeholder="e.g. 77d0845" onChange={(e) => set({ otel: e.target.value })} />
         </label>
         <label>Slower than (s)
           <input type="number" min="0" step="0.5" value={form.minLatency}

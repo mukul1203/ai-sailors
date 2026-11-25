@@ -183,3 +183,41 @@ def test_purging_sessions_removes_their_traces_and_old_traces_are_pruned(
     assert prune_traces(conn, 30) == 1
     assert conn.execute("SELECT COUNT(*) FROM session_events WHERE kind = 'ask'").fetchone()[0] == 1
     conn.close()
+
+
+def test_a_trace_links_to_its_opentelemetry_trace(
+    tmp_path: Path, seeded: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("opentelemetry.sdk")
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from storyquest import telemetry
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry, "_tracer", provider.get_tracer("test"))
+    monkeypatch.setattr(telemetry, "_ready", True)
+
+    client, _ = make_client(tmp_path, seeded, OTEL_VIEWER_URL="http://localhost:16686/")
+    ask(client, start(client)["id"])
+    (root,) = [s for s in exporter.get_finished_spans() if s.name == "turn"]
+    otel_id = f"{root.context.trace_id:032x}"
+
+    found = client.get(f"/api/admin/traces?otel_trace={otel_id[:7]}", headers=AUTH).json()
+    assert found["total"] == 1
+    assert client.get("/api/admin/traces?otel_trace=ffffff0", headers=AUTH).json()["total"] == 0
+    assert client.get("/api/admin/traces?otel_trace=x%27--", headers=AUTH).json()["total"] == 0
+    detail = client.get(f"/api/admin/traces/{found['items'][0]['id']}", headers=AUTH).json()
+    assert detail["trace"]["otel_trace_id"] == otel_id
+    assert detail["otel_url"] == f"http://localhost:16686/trace/{otel_id}"
+
+
+def test_without_opentelemetry_there_is_no_link(tmp_path: Path, seeded: Settings) -> None:
+    client, _ = make_client(tmp_path, seeded)
+    ask(client, start(client)["id"])
+    row = client.get("/api/admin/traces", headers=AUTH).json()["items"][0]
+    detail = client.get(f"/api/admin/traces/{row['id']}", headers=AUTH).json()
+    assert detail["trace"]["otel_trace_id"] == "" and detail["otel_url"] == ""

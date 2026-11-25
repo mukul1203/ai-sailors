@@ -19,6 +19,7 @@ class TraceFilter:
     until: float | None = None
     min_latency: float | None = None
     cached: bool | None = None
+    otel_trace: str = ""  # an OpenTelemetry trace id, or its start (Jaeger shows 7 digits)
 
 
 def save_trace(
@@ -79,6 +80,12 @@ def _where(f: TraceFilter) -> tuple[str, list[Any]]:
     if f.cached is not None:
         clauses.append("t.any_cached = ?")
         args.append(int(f.cached))
+    otel = f.otel_trace.strip().lower()
+    if otel:
+        if not all(c in "0123456789abcdef" for c in otel):
+            otel = "-"  # not a trace id: match nothing
+        clauses.append("json_extract(t.trace, '$.otel_trace_id') LIKE ?")
+        args.append(f"{otel}%")
     return (" WHERE " + " AND ".join(clauses)) if clauses else "", args
 
 

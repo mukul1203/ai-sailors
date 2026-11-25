@@ -127,6 +127,7 @@ class TurnResult:
     total_latency_s: float = 0.0  # real time the whole turn took
     timings: dict[str, float] = field(default_factory=dict)  # seconds per stage that ran
     tool_calls: list[ToolTrace] = field(default_factory=list)  # agent mode only
+    otel_trace_id: str = ""  # the OpenTelemetry trace of this turn, when export is on
     # (stage, start, end) wall-clock times, for the OpenTelemetry timeline only (not stored)
     stages: list[tuple[str, float, float]] = field(default_factory=list, compare=False)
 
@@ -151,4 +152,5 @@ class TurnResult:
             "flags": self.flags,
             "evidence": self.evidence,
             "tool_calls": [t.to_dict() for t in self.tool_calls],
+            "otel_trace_id": self.otel_trace_id,
         }
