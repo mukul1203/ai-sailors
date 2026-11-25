@@ -33,6 +33,7 @@
   - [6.3 Frontend (`web/`)](#63-frontend-web)
   - [6.4 Deployment](#64-deployment)
   - [6.5 Trace dashboard](#65-trace-dashboard)
+  - [6.6 OpenTelemetry export](#66-opentelemetry-export)
 - [7. Evaluation](#7-evaluation)
   - [7.1 Golden set](#71-golden-set)
   - [7.2 Runner and scoring](#72-runner-and-scoring)
@@ -78,7 +79,7 @@ Generic chatbots fail a child reading a specific book in five ways (`docs/mvp-pr
 | Agentic layer: ≥3 tools, planner→executor→critic, state across turns, error handling | Mode M5: three read-only tools, a planner, a critic with one revision, session memory, a 10-step and 8,000-token cap, JSON schemas with retry (Section 5.4) | Done |
 | Accuracy, task completion rate, tool calls, cost and latency per query | Reported per mode and split by `make final-eval` (Section 7.2) | Done, numbers [TBD] |
 | Failure taxonomy (retrieval miss, reasoning error, tool-call error, hallucination) | Eight failure labels, mapped onto the brief's four (Section 7.3) | Done |
-| Tracing | Our own trace dashboard of real questions (Section 6.5). LangSmith, Langfuse and OpenTelemetry are not used | Partly |
+| Tracing | OpenTelemetry export of every turn (spans for router, planner, tools, answer and critic, with GenAI attributes), viewed in Jaeger, plus our own trace dashboard of real questions (Section 6.5) | Done |
 | UI, container, rate limiting, caching | React app, Docker, 10 questions per session and 2 seconds between them, a throttled and cached model client (Section 6) | Done |
 | Responsible AI: injection tests against the corpus, PII, refusals, human-in-the-loop boundary | Section 8. Injection is tested on the child's messages (INJ) and on instructions planted in the book text (`make eval-planted`) | Done |
 
@@ -393,6 +394,18 @@ Before the dashboard, the full trace of a turn existed only in the CLI and the e
 
 The dashboard already exposed a real fault: two M4S questions carried a `reranker_error` flag because `sentence-transformers` was not installed, so they were answered without reranking and should not count as M4S results.
 
+### 6.6 OpenTelemetry export
+
+The dashboard is built for this app; the brief also asks for tracing through a standard tool. `storyquest/telemetry.py` sends every turn to any OpenTelemetry (OTLP/HTTP) collector, such as Jaeger, Grafana Tempo or Langfuse.
+
+- **Switch.** Off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set; it needs the optional `otel` extra (`pip install -e ".[otel]"`). `make jaeger` runs a local Jaeger in Docker or Podman.
+- **Shape.** One trace per turn: a `turn` span (mode, route, flags, book position, per-stage seconds, total tokens) with one child span per model call (`router`, `planner`, `generate`, `critic`) and per tool call (`tool search_book`, ...). Model spans use the OpenTelemetry GenAI names (`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`), and tool spans `gen_ai.tool.name`, so a standard viewer can read them.
+- **Timing.** Each model and tool call records when it returned, so spans sit at their real place on the timeline; a cached call takes no time.
+- **Privacy.** By default no text leaves the app: no child message, reply, prompt or tool argument. `OTEL_TRACE_TEXT=true` adds the message and the reply, for local debugging only. This mirrors `TRACE_STORE=summary`.
+- **Safety.** The turn is exported after it ends, from the trace it already records, so the agent code is unchanged and a failing exporter is logged and never reaches the child. Six tests check the span tree, the GenAI attributes, that no text leaks by default and that nothing is sent without an endpoint.
+
+![An M5 turn in Jaeger: router, planner, three tool calls, the answer and the critic, each with its timing; the answer span shows the model and its token counts](images/otel-jaeger-trace.png)
+
 ---
 
 ## 7. Evaluation
@@ -551,7 +564,7 @@ The router and output check use no free-form generation for refusals, so a defle
 
 **Observability**
 
-- Traces go to our own dashboard, not to LangSmith, Langfuse or OpenTelemetry. The dashboard keeps children's questions on our own server, which suits the privacy constraint, but it cannot be explored with those tools.
+- The OpenTelemetry export carries timings, tokens and routes, not prompts or passages, so debugging a bad answer still needs our own dashboard (in `full` mode). The eval judge's model calls are not exported, only the turns.
 
 **Technical limits**
 
@@ -603,7 +616,7 @@ The router and output check use no free-form generation for refusals, so a defle
 | Run the app locally | `make dev-api` (http://localhost:8000) |
 | Run in containers | `make up` |
 | Ingest a book | `make ingest-llm`, `make review`, `make approve`, `make publish` |
-| Evaluate | `make eval`, `make eval-retrieval` (retrieval only, no chat model), `make eval-planted` (injection planted in the book), `make eval-prompting` (prompting strategies on M2S), `make eval-report` |
+| Evaluate | `make eval`, `make eval-retrieval` (retrieval only, no chat model), `make eval-planted` (injection planted in the book), `make eval-prompting` (prompting strategies on M2S), `make eval-report`, `make jaeger` (local OpenTelemetry viewer) |
 | Every report number at once | `make final-eval` (checks the endpoints answer first) |
 | Try the agent | `make ask BOOK=236 Q="..." MODE=M5 ARGS="--chapter 0 --beat 1"` |
 | Quality gate | `make check` |
