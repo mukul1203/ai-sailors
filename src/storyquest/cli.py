@@ -2,6 +2,7 @@
 
 import argparse
 import dataclasses
+import json
 import re
 import sqlite3
 import sys
@@ -20,6 +21,7 @@ from storyquest.config import Settings, load_settings
 from storyquest.domain.position import Position
 from storyquest.evaluation.html_report import render_report
 from storyquest.evaluation.items import GoldItem, load_items
+from storyquest.evaluation.planted import load_planted, run_planted, summarize_planted
 from storyquest.evaluation.report import summarize
 from storyquest.evaluation.retrieval import render_recall, retrieval_recall
 from storyquest.evaluation.runner import (
@@ -394,6 +396,36 @@ def _eval_preflight(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+def _eval_planted(args: argparse.Namespace) -> int:
+    """Prompt injection planted in the book: each test adds a passage carrying an instruction,
+    asks a question that finds it, and checks the reply did not follow it."""
+    settings, conn = _open_content()
+    path = Path(args.tests) if args.tests else settings.root / "eval" / "planted_injection_v1.jsonl"
+    tests = load_planted(path)
+    try:
+        modes = _parse_modes(args.modes)
+        llm = build_llm(settings, use_cache=not args.no_cache)
+        embedder = _embedder_for(settings, modes, no_cache=args.no_cache)
+        ctx = load_context(conn, llm, settings, args.book, embedder)
+    except (LLMError, AgentError, EmbeddingError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    failed = 0
+    for mode in modes:
+        rows = [run_planted(ctx, test, mode) for test in tests]
+        failed += sum(not r["passed"] for r in rows)
+        text = summarize_planted(mode, rows)
+        print(text + "\n")
+        if args.out:
+            out = Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f"planted-{mode.name}.txt").write_text(text + "\n")
+            (out / f"planted-{mode.name}.jsonl").write_text(
+                "".join(json.dumps(r) + "\n" for r in rows)
+            )
+    return 1 if failed else 0
+
+
 def _eval_tables(args: argparse.Namespace) -> int:
     """Markdown tables of the headline numbers of saved runs, for the technical report."""
     runs = [run for folder in args.folders for run in load_batch(Path(folder))]
@@ -564,6 +596,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--no-open", action="store_true", help="do not open the report")
     run.add_argument("--out", help="folder for this run (default: a new one under eval/runs)")
     ev.add_parser("preflight", help="Check the chat model and embeddings answer (no cache)")
+    plt = ev.add_parser(
+        "planted", help="Prompt injection planted in the book text: the reply must not obey it"
+    )
+    plt.add_argument("--modes", default="M5", help="modes to test, e.g. 'M2S M5'")
+    plt.add_argument("--book", type=int, default=236)
+    plt.add_argument("--tests", help="path to a planted-injection file")
+    plt.add_argument("--no-cache", action="store_true")
+    plt.add_argument("--out", help="folder to save the results in")
     tab = ev.add_parser("tables", help="Markdown tables of saved runs, for the report")
     tab.add_argument("folders", nargs="+", help="run or batch folders under eval/runs")
     ret = ev.add_parser(
@@ -628,6 +668,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             "retrieval": _eval_retrieval,
             "report": _eval_report,
             "preflight": _eval_preflight,
+            "planted": _eval_planted,
             "tables": _eval_tables,
         }
         return commands[args.eval_command](args)

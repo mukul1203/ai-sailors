@@ -44,7 +44,7 @@ ENV := set -a; \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
-        eval eval-retrieval eval-report final-eval \
+        eval eval-retrieval eval-report eval-planted final-eval \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -321,7 +321,13 @@ final-eval: _need-code ## All report numbers in one go: make final-eval [FINAL_M
 	  && $(BIN)/storyquest eval run --modes "$(FINAL_MODES)" --split dev --no-open --out "$$out/dev" \
 	  && $(BIN)/storyquest eval run --modes "$(FINAL_MODES)" --split test --no-open --out "$$out/test" \
 	  && $(BIN)/storyquest eval tables "$$out/dev" "$$out/test" > "$$out/tables.md" \
+	  && { $(BIN)/storyquest eval planted --modes "$(FINAL_MODES)" --out "$$out/planted" || true; } \
 	  && cat "$$out/retrieval-dev.txt" "$$out/tables.md" && echo "Saved in $$out"
+
+# Prompt injection planted in the book: each test adds a passage that carries an instruction,
+# asks a question that finds it, and checks the reply ignored it. The book is never changed.
+eval-planted: _need-code ## Planted-passage injection tests: make eval-planted [MODES="M2S M5"]
+	@$(ENV) $(BIN)/storyquest eval planted --modes "$(or $(MODES),M5)" $(ARGS)
 
 # Rebuilds report.html from a saved folder under eval/runs/ and opens it again, without any
 # model calls. Useful after the report layout changes or to look at an old run.
