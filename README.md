@@ -150,6 +150,7 @@ The same agent code runs every mode; only the settings differ.
 | M2S | hybrid | yes | yes |
 | M3 / M3S | hybrid, plus entity cards for named characters, places and terms | no / yes | yes, and `make ingest-llm` for the cards |
 | M5 | **agent loop**: a planner chooses tools (search the book, look up a name, read the scene), then a critic checks the answer; remembers the session's last questions | yes | no: its search uses keywords alone without it |
+| M2S-FS / M2S-COT / M2S-DEC, M5-FS / M5-COT | M2S or M5 with a few-shot, chain-of-thought or decomposition answer prompt, for the prompting comparison (`make eval-prompting`) | yes | as M2S / M5 |
 
 M2S is the best mode (72% on the dev split in an earlier run; 66% in the comparison below, on the
 same machine and code for every row). M3S, the entity-card variant, scored 68% in its first
@@ -209,6 +210,10 @@ same 8B model, so treat one- or two-question differences as noise.
   characters), passages per turn (`RETRIEVAL_TOP_K`, 6), model and embedding settings.
 - Settings you set in your shell win over both files, for example
   `RETRIEVAL_TOP_K=3 make eval MODES=M2S`.
+- OpenTelemetry (optional): `make jaeger` starts a local viewer (Docker or Podman), then run
+  the app or an eval with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and open
+  http://localhost:16686. Each question is one trace with a span per model and tool call; no
+  child text is sent unless `OTEL_TRACE_TEXT=true`.
 - Runtime data (databases, model and embedding caches, eval runs) lives in `var/` and
   `eval/runs/`, both git-ignored. `make db-reset` deletes the databases; `make demo-data` rebuilds
   them.

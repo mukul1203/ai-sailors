@@ -44,7 +44,7 @@ ENV := set -a; \
         test lint format typecheck check check-data \
         migrate seed demo-data admin-user ingest ingest-llm ingest-status review approve publish \
         entities worker embed inspect search ask db-shell db-viewer db-reset \
-        eval eval-retrieval eval-report eval-planted eval-prompting final-eval \
+        eval eval-retrieval eval-report eval-planted eval-prompting final-eval jaeger jaeger-stop \
         deploy remote-ps remote-logs remote-restart remote-shell remote-viewer remote-db-tunnel remote-db-pull \
         clean clean-all _need-code _need-web _need-compose _need-book
 
@@ -271,6 +271,18 @@ db-shell: ## Open sqlite3 on a local database: make db-shell DB=content|app
 
 # Starts Datasette, a read-only web page for browsing the tables and running SELECT queries.
 # Opens whichever of content.db and app.db exist in DATA_DIR (or DATA=<dir>).
+# A local OpenTelemetry viewer for the optional trace export. Runs Jaeger in Docker or Podman
+# (CONTAINER=podman); then start the app with OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+# and open http://localhost:16686 (service storyquest). `make jaeger-stop` removes it.
+CONTAINER ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+JAEGER_IMAGE ?= docker.io/jaegertracing/all-in-one:1.62.0
+jaeger: ## Local OpenTelemetry trace viewer (Jaeger) on :16686, OTLP on :4318
+	@$(CONTAINER) run -d --rm --name storyquest-jaeger -p 16686:16686 -p 4318:4318 $(JAEGER_IMAGE) >/dev/null
+	@echo "Jaeger: http://localhost:16686  (export: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318)"
+
+jaeger-stop: ## Stop the local Jaeger viewer
+	@$(CONTAINER) rm -f storyquest-jaeger >/dev/null 2>&1 || true
+
 db-viewer: ## Browse local databases in Datasette (DATA=dir to point at a snapshot)
 	@$(ENV) d="$(DATA)"; d="$${d:-$$DATA_DIR}"; files=""; \
 	  test -x $(BIN)/datasette || { echo "datasette not installed: run make setup"; exit 1; }; \
