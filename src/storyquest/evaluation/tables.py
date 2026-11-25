@@ -42,7 +42,7 @@ def render_tables(runs: Sequence[Run]) -> str:
     head = [
         "Mode",
         "Split",
-        "Pass rate",
+        "Pass rate (task completion)",
         "Gold passage found",
         "Facts' evidence found",
         "Faithful replies",
