@@ -434,6 +434,8 @@ Each failed item gets exactly one label, for the earliest cause (a failed call, 
 
 Most tool-call errors in M5 are absorbed by a fallback (a skipped tool, a plain search, a safe reply), so they appear as flags on a turn rather than as failed items; the trace dashboard filters by flag.
 
+The evaluation reports use this mapping directly: the text summary, the HTML report and `make final-eval`'s `tables.md` count failures by the four classes, list each failed item as "class: label", and count the items that recovered from a tool-call problem separately.
+
 ### 7.4 Results
 
 **[TBD: replace this section with `eval/runs/final-<time>/tables.md` from `make final-eval`, run once on the course endpoint: M2S, M4S and M5 on the dev split, then the test split once.]**
