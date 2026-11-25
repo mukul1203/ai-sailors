@@ -144,9 +144,10 @@ export default function TraceDetail() {
         <h3>2. Retrieval</h3>
         <Passages passages={trace.passages} full={full} />
         <p className="note">
-          Ranks are 1 = best. A "–" means that search did not return the passage. Position is
-          where in the book it sits; the spoiler filter only lets through passages the child
-          had already reached.
+          Ranks are 1 = best. A "–" means that search did not return the passage. Score is the
+          fused rank score (reciprocal rank fusion, about 0.03 at best), or the reranker's score
+          when it ran: it orders passages and is not a percentage. Position is where in the book
+          it sits; the spoiler filter only lets through passages the child had already reached.
         </p>
       </div>
 
