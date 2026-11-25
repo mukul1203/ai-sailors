@@ -530,7 +530,7 @@ The judge is the same Qwen3-8B that writes the answers, so its verdicts were che
 | Prompt injection from the child | `<child_message>` markers, a 300-character input cap, an `injection` router label, a content security policy |
 | Prompt injection planted in the book | Book text is only quoted as numbered evidence sentences; the critic rejects facts the book does not state; film words and later names are blocked by code. Tested by `make eval-planted` (below) |
 | Inappropriate content in generated beats | Safety word list, reading-level check, and a human approval gate before publish |
-| Privacy | The agent never asks for personal details; a `personal` route deflects them; sessions use random tokens |
+| Privacy | The agent never asks for personal details; a `personal` route deflects them with a fixed reply, and the message is never stored: the session keeps "[personal information removed]" and its trace keeps no prompts, whatever `TRACE_STORE` says; sessions use random tokens; the OpenTelemetry export sends no text by default |
 | Over-use | 10 questions per session, 2-second minimum interval |
 | Retention | Child text is kept in `session_events` until `storyquest purge-sessions --days N` is run. Traces are also pruned after `TRACE_RETENTION_DAYS` (30) |
 | Trace access | The trace dashboard is off by default and, when on, needs an admin token. Prompts and passage text are stored only with `TRACE_STORE=full` |
@@ -559,7 +559,7 @@ The router and output check use no free-form generation for refusals, so a defle
 
 - **Accounts and parent controls.** There is no authentication; admin routes are open, except the trace dashboard, which is gated by a shared admin token. Parent profiles, child profiles, badges and per-child session caps exist only in the design docs. `SESSION_SECRET` is not yet used.
 - **Agent cost and strictness (M5).** About three model calls and over 2,000 prompt tokens per question against under 1,000 for M2S, which on the shared one-request endpoint means several seconds per question; and the critic sometimes rejects an acceptable answer (it fails safe, with "I don't know that yet").
-- **PII redaction** in stored traces. Trace retention is automated, but the LLM disk cache also holds prompts and is not cleared by `purge-sessions`.
+- **PII inside a story question** ("I'm Aarav, who is Baloo?") is answered and stored like any question; only messages the router labels personal are redacted. Trace retention is automated, but the LLM disk cache also holds prompts and is not cleared by `purge-sessions`.
 - **CI.** There is no workflow; `make check` is run by hand.
 
 **Evaluation gaps**

@@ -30,6 +30,8 @@ from storyquest.stores.traces import save_trace
 
 log = logging.getLogger(__name__)
 
+PERSONAL_PLACEHOLDER = "[personal information removed]"
+
 BACK_TO_QUEST = "Ready to go back to the quest?"
 MAX_WRONG_TRIES = 2  # after this many wrong answers the right one is shown and the quest goes on
 
@@ -313,12 +315,17 @@ def ask(
         history=history,
         trace_attributes={"storyquest.session": session_tag},
     )
+    # A message the router found personal (a name, an address, a phone number) is never stored:
+    # the event keeps a placeholder and the trace keeps no prompts, whatever TRACE_STORE says.
+    personal = result.route == "personal"
+    stored_text = PERSONAL_PLACEHOLDER if personal else text
     event_id = _event(
-        app, session_id, "ask", beat.idx, text, result.reply, result.route, result.flags
+        app, session_id, "ask", beat.idx, stored_text, result.reply, result.route, result.flags
     )
     if settings.trace_store != "off":
+        store = "summary" if personal else settings.trace_store
         try:  # a trace is for the grown-ups: failing to save one must never fail the child's reply
-            save_trace(app, session_id, event_id, result, settings.trace_store)
+            save_trace(app, session_id, event_id, result, store)
         except Exception:
             log.exception("could not save the trace for session %s", session_id)
     app.execute(

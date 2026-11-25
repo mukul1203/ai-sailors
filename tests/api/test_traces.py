@@ -221,3 +221,13 @@ def test_without_opentelemetry_there_is_no_link(tmp_path: Path, seeded: Settings
     row = client.get("/api/admin/traces", headers=AUTH).json()["items"][0]
     detail = client.get(f"/api/admin/traces/{row['id']}", headers=AUTH).json()
     assert detail["trace"]["otel_trace_id"] == "" and detail["otel_url"] == ""
+
+
+def test_a_personal_message_is_never_stored(tmp_path: Path, seeded: Settings) -> None:
+    client, _ = make_client(tmp_path, seeded, label="personal", TRACE_STORE="full")
+    ask(client, start(client)["id"], "My name is Aarav and I live at 12 Rose Street")
+    row = client.get("/api/admin/traces", headers=AUTH).json()["items"][0]
+    assert row["route"] == "personal" and row["question"] == play.PERSONAL_PLACEHOLDER
+    detail = client.get(f"/api/admin/traces/{row['id']}", headers=AUTH).json()
+    assert detail["stored"] == "summary"
+    assert "Aarav" not in json.dumps(detail) and "Rose Street" not in json.dumps(detail)
