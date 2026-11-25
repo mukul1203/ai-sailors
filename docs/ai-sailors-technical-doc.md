@@ -68,15 +68,18 @@ Generic chatbots fail a child reading a specific book in five ways (`docs/mvp-pr
 
 **Requirements derived from the capstone brief** (`docs/capstone-brief.md`):
 
-| Requirement | How the project addresses it |
-|---|---|
-| Gold evaluation set of 60–100 items | 80-item golden set, 10 categories (Section 7) |
-| At least 3 prompting strategies compared | Modes M0–M4S (Section 5) |
-| Hybrid retrieval with reranker, recall@k measured separately | BM25 + dense + RRF + cross-encoder; `make eval-retrieval` |
-| Agentic layer with a bounded step count | Linear pipeline with router, grounding and output check (see limitations) |
-| Failure taxonomy | Eight failure labels (Section 7) |
-| UI, container, rate limiting, caching | React app, Docker, throttled and cached model client (Section 6) |
-| Responsible-AI section | Section 8 |
+| Requirement | How the project addresses it | Status |
+|---|---|---|
+| Specification and gold evaluation set of 60–100 items, before any code | 80-item golden set in 10 categories with line-level evidence, committed before the agent code (Section 7.1) | Done |
+| At least 3 prompting strategies compared | The modes compare plain prompting (M0), retrieval (M1, M2), structured output with cited evidence (the S modes) and decomposition by a planner (M5) (Section 5.2). A like-for-like comparison of few-shot, chain-of-thought and decomposition prompts on the same retrieval is not yet done | Partly |
+| Real corpus, chunking experiments | One book (*The Jungle Book*, 201 passages). Embedding experiments with and without scene context (Section 4.5); chunk size itself was not varied | Partly |
+| Hybrid retrieval with reranker, citations, recall@k measured separately | BM25 + dense + RRF + cross-encoder, sentence-level citations; `make eval-retrieval` reports recall at 3, 6 and 10 for each method (Section 4.5) | Done |
+| Agentic layer: ≥3 tools, planner→executor→critic, state across turns, error handling | Mode M5: three read-only tools, a planner, a critic with one revision, session memory, a 10-step and 8,000-token cap, JSON schemas with retry (Section 5.4) | Done |
+| Accuracy, task completion rate, tool calls, cost and latency per query | Reported per mode and split by `make final-eval` (Section 7.2) | Done, numbers [TBD] |
+| Failure taxonomy (retrieval miss, reasoning error, tool-call error, hallucination) | Eight failure labels, mapped onto the brief's four (Section 7.3) | Done |
+| Tracing | Our own trace dashboard of real questions (Section 6.5). LangSmith, Langfuse and OpenTelemetry are not used | Partly |
+| UI, container, rate limiting, caching | React app, Docker, 10 questions per session and 2 seconds between them, a throttled and cached model client (Section 6) | Done |
+| Responsible AI: injection tests against the corpus, PII, refusals, human-in-the-loop boundary | Section 8. Injection is tested on the child's messages; an instruction planted in the book text is not yet tested | Partly |
 
 **Product constraints.** No spoilers beyond the child's current position. No film content. Reading level at or below Flesch-Kincaid grade 8. A human reviews generated content before a child sees it.
 
@@ -396,6 +399,17 @@ The LLM judge makes three separate calls per item:
 - **Claims:** the reply is split into at most 8 claims.
 - **Verify:** each claim is checked against the retrieved passages, and every "yes" needs a quote. At least 80% of that quote's words must occur in the cited text.
 
+**Metrics reported** for each mode and split (`make final-eval`, Section 7.4):
+
+| Metric | Meaning |
+|---|---|
+| Pass rate (task completion rate) | Items where the agent did the whole task as expected: the right behaviour, nothing forbidden, enough facts and a faithful reply |
+| Gold passage found | Story questions whose gold passage was among the passages the answer was written from |
+| Facts' evidence found | Required facts whose evidence was among those passages |
+| Faithful replies | Replies whose every claim the passages support |
+| Model calls, tool calls | Average per item, counting the router and excluding the judge |
+| Prompt tokens, seconds | Average cost and model time per item (the judge excluded) |
+
 ### 7.3 Failure taxonomy
 
 | Label | Meaning |
@@ -408,6 +422,17 @@ The LLM judge makes three separate calls per item:
 | `missing_facts` | Answer lacked required facts |
 | `unfaithful` | A claim was not supported by the passages |
 | `no_deflection` | Answered something that should have been deflected |
+
+Each failed item gets exactly one label, for the earliest cause (a failed call, then the route, then retrieval, then the reply's content; `scoring.py::_label`), so a retrieval miss is not also counted as missing facts. The brief's four failure classes map onto the labels and the agent's flags as follows:
+
+| Brief's class | Our labels | Agent flags that show the cause (M5) |
+|---|---|---|
+| Retrieval miss | `retrieval_miss` | |
+| Reasoning error | `wrong_route`, `over_deflection`, `no_deflection`, `missing_facts` | `critic_rejected` (the critic refused an answer) |
+| Tool-call error | `error` | `tool_error`, `planner_unparsed`, `planner_fallback`, `critic_unparsed`, `step_cap`, `token_budget` |
+| Hallucination | `unfaithful`, `leak` (film content or a spoiler) | `ungrounded`, `banned_term`, `later_name` (caught by code before the child sees it) |
+
+Most tool-call errors in M5 are absorbed by a fallback (a skipped tool, a plain search, a safe reply), so they appear as flags on a turn rather than as failed items; the trace dashboard filters by flag.
 
 ### 7.4 Results
 
@@ -471,6 +496,13 @@ The router and output check use no free-form generation for refusals, so a defle
 - One chapter of one book; the test split is unreported; five items are skipped.
 - The capstone brief suggests a corpus of 500–2,000 documents, and only the Jungle Book fixture is committed. Ingestion of other books is supported but not evaluated.
 - The judge is the same model as the generator, and its thresholds are hand-picked.
+- Prompting strategies (few-shot, chain-of-thought, decomposition) are not compared on the same retrieval; the modes vary retrieval and grounding.
+- Chunk size was fixed at about 500 characters; only the embedding context was varied.
+- No injection test plants an instruction in the book text itself (INJ-004 is skipped).
+
+**Observability**
+
+- Traces go to our own dashboard, not to LangSmith, Langfuse or OpenTelemetry. The dashboard keeps children's questions on our own server, which suits the privacy constraint, but it cannot be explored with those tools.
 
 **Technical limits**
 
@@ -484,11 +516,12 @@ The router and output check use no free-form generation for refusals, so a defle
 **Next steps**
 
 1. Run `make final-eval` on the course endpoint (M2S, M4S, M5 on dev, then test once) and fill the [TBD] numbers in the abstract, 4.5, 5.4 and 7.4; then choose the play mode from them.
-2. Add a second book and a second eval fixture.
-3. Add a small authenticated parent area and automated session purging.
-4. Replace the same-model judge, or add a human-labelled subset to calibrate it.
-5. Add CI running `make check`.
-6. Replace the linear scan with an approximate index if the corpus grows.
+2. Compare few-shot, chain-of-thought and decomposition prompts on the same retrieval; add a poisoned-passage injection test and a chunk-size comparison.
+3. Add a second book and a second eval fixture.
+4. Add a small authenticated parent area and automated session purging.
+5. Replace the same-model judge, or add a human-labelled subset to calibrate it.
+6. Add CI running `make check`.
+7. Replace the linear scan with an approximate index if the corpus grows.
 
 ---
 
