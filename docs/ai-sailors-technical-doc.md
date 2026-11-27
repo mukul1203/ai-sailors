@@ -1,7 +1,18 @@
 # StoryQuest Copilot — Technical Report
 
 **Project:** ai-sailors · **Track:** B (hosted Qwen3-8B, no GPU) · **Programme:** upGrad Executive PG in GenAI and Agentic AI
+
 **AI-Sailors Team:** Mukul Agrawal, Mukilan S, Gulshan Nayak, Alok Kumar, Ramya Roy, Yogesh Sharma
+
+**Links** (all open to anyone with the link):
+
+| Deliverable | Link |
+|---|---|
+| Git repository (reproducible code; `README.md` gives setup and every command) | https://github.com/mukul1203/ai-sailors |
+| 10-minute demo of the running system | https://drive.google.com/file/d/1-3E-kw4dDWIdXJy1CmhiIp88Ej9NBMeC/view?usp=sharing |
+| Trace dashboard (Section 6; screenshots of the dashboard and its OpenTelemetry view, also shown live in the demo) | https://drive.google.com/drive/folders/10D756POwDYm2p0T8Q7ZaqsJpoafUl9ZP?usp=sharing |
+| Evaluation reports (per-question HTML for dev and test, judge calibration, planted-injection results) | https://drive.google.com/drive/folders/1FtxzCHAFL_deNxbhSSObqPfHJNZwu4qj?usp=sharing |
+| Model card and Responsible AI | Section 8 of this report |
 
 ---
 
@@ -261,7 +272,22 @@ The judge never passed a bad answer, so its errors run one way: it is too strict
 
 ---
 
-## 8. Responsible AI and Safety
+## 8. Model Card, Responsible AI and Safety
+
+**Model card.**
+
+| | |
+|---|---|
+| System | StoryQuest Copilot sidekick, mode M5 (agent), on Qwen3-8B (course endpoint) with bge-small-en-v1.5 embeddings and a MiniLM cross-encoder reranker. No model was trained or fine-tuned. |
+| Intended use | Children aged 6 to 9 reading a public-domain book that a person has reviewed, asking questions about the part they have already read, with a parent or teacher nearby. |
+| Out of scope | Questions about the world outside the book, homework help, open chat, unreviewed books, unsupervised use by younger children, any use that collects personal details. |
+| Data | Project Gutenberg text (The Jungle Book, two chapters prepared: 201 passages); scenes generated offline and approved by a person. Evaluated on an 80-question golden set written before the agent code (Section 7.1). |
+| Performance | 34/47 dev and 19/25 test questions passed by the automatic judge; person-checked, 36/47 on dev (Section 7). |
+| Known failure modes | Wrong cause in some "why" answers (the cited sentence is right but the explanation is not); a needed passage not retrieved; the critic occasionally withdrawing a correct answer; an automatic judge that is too strict (Sections 7.2 and 7.4). |
+| Refusals | "I don't know that yet" when nothing relevant is retrieved or the critic withdraws an answer (11 of 47 dev questions, 9 of them correct deflections); fixed, pre-written replies for unsafe, off-topic, personal-detail and injection messages, so no model text reaches the child on those paths. |
+| Adversarial tests | Planted-passage injection, 6 attacks in 3 modes, 18/18 passed (below); spoiler, film-contamination and injection questions in the golden set. |
+
+**Risks and controls.**
 
 | Risk | Control |
 |---|---|
@@ -285,7 +311,7 @@ The judge never passed a bad answer, so its errors run one way: it is too strict
 ## 9. Limitations and Next Steps
 
 - **Small evaluation.** One chapter of one book, 47 dev and 25 test questions: too few for differences of one to three questions between modes or prompts to be statistically conclusive. The brief suggests 500 to 2,000 documents; ingestion of other books works but is not evaluated.
-- **Same-model judge.** Calibrated once against one person (Section 7.3), not on every run and not by several people; it is too strict, more so with the simpler modes.
+- **Same-model judge.** Calibrated once against one person (Section 7.4), not on every run and not by several people; it is too strict, more so with the simpler modes.
 - **Agent cost.** About three model calls and over 2,000 prompt tokens per question, several seconds on the shared one-request endpoint.
 - **Not built.** Accounts and parent controls (only the trace dashboard is gated, by a shared token), CI, a chunk-size comparison, and redaction of personal details inside a story question.
 - **Scale.** Dense search is a linear scan, fine for one book but not for a large corpus.
