@@ -189,3 +189,5 @@ def test_a_read_only_demo_closes_the_admin_routes_and_chapter_preparation(
         assert r.status_code == 403 and r.json()["error"]["code"] == "read_only_demo", url
     assert client.get("/api/health").status_code == 200
     assert client.get("/api/library").status_code == 200
+    # the trace dashboard keeps its own admin-token gate
+    assert client.get("/api/admin/traces").status_code != 403

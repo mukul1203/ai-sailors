@@ -195,9 +195,8 @@ def create_app(
         # A public demo has no accounts, so the admin routes and chapter preparation (which runs
         # long model jobs) are closed. Playing, asking and the token-gated dashboard still work.
         path = request.url.path
-        if settings.read_only_demo and (
-            path.startswith("/api/admin/") or path == "/api/admin" or path.endswith("/prepare")
-        ):
+        admin = path.startswith("/api/admin") and not path.startswith("/api/admin/traces")
+        if settings.read_only_demo and (admin or path.endswith("/prepare")):
             return JSONResponse(
                 status_code=403,
                 content={
