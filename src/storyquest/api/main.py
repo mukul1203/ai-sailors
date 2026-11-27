@@ -191,6 +191,23 @@ def create_app(
         )
 
     @app.middleware("http")
+    async def read_only_demo(request: Request, call_next: Callable[[Request], Any]) -> Response:
+        # A public demo has no accounts, so the admin routes and chapter preparation (which runs
+        # long model jobs) are closed. Playing, asking and the token-gated dashboard still work.
+        path = request.url.path
+        if settings.read_only_demo and (
+            path.startswith("/api/admin/") or path == "/api/admin" or path.endswith("/prepare")
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": {"code": "read_only_demo", "message": "This is a read-only demo."}
+                },
+            )
+        response: Response = await call_next(request)
+        return response
+
+    @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable[[Request], Any]) -> Response:
         response: Response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"

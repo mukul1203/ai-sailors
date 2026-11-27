@@ -76,6 +76,7 @@ class Settings:
     trace_store: str  # off | summary | full
     trace_dashboard: bool
     trace_retention_days: float
+    read_only_demo: bool  # public demo: no book upload, review, publish or chapter preparation
     otel_viewer_url: str  # e.g. http://localhost:16686: the dashboard links each trace to it
     data_dir: Path
     api_port: int
@@ -151,6 +152,7 @@ def load_settings(root: Path | None = None, environ: Mapping[str, str] | None = 
         trace_store=_trace_store(get("TRACE_STORE", "summary")),
         trace_dashboard=_flag(get("TRACE_DASHBOARD", "false")),
         trace_retention_days=float(get("TRACE_RETENTION_DAYS", "30")),
+        read_only_demo=_flag(get("READ_ONLY_DEMO", "false")),
         otel_viewer_url=get("OTEL_VIEWER_URL", ""),
         data_dir=path(get("DATA_DIR", "var")),
         api_port=int(get("API_PORT", "8000")),

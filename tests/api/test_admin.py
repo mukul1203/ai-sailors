@@ -171,3 +171,21 @@ def test_running_out_of_embedding_quota_still_publishes_the_book(tmp_path: Path)
     client.post(f"/api/admin/books/{TINY}/approve", json={"include_flagged": True})
     out = client.post(f"/api/admin/books/{TINY}/publish").json()
     assert out["published"] and "quota exceeded" in out["embedding_error"]
+
+
+def test_a_read_only_demo_closes_the_admin_routes_and_chapter_preparation(
+    tmp_path: Path, source: Path
+) -> None:
+    app = create_app(make_settings(tmp_path, READ_ONLY_DEMO="true"), llm=StageLLM(every=3))
+    client = TestClient(app)
+    for method, url in [
+        ("post", "/api/admin/books"),
+        ("get", "/api/admin/books/9100/review"),
+        ("post", "/api/admin/books/9100/approve"),
+        ("post", "/api/admin/books/9100/publish"),
+        ("post", "/api/library/9100/chapters/0/prepare"),
+    ]:
+        r = client.request(method, url, json=book_body(source))
+        assert r.status_code == 403 and r.json()["error"]["code"] == "read_only_demo", url
+    assert client.get("/api/health").status_code == 200
+    assert client.get("/api/library").status_code == 200
