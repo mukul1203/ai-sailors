@@ -195,7 +195,7 @@ The React app has four tabs: **Play** (published chapters), **Books** (add and p
 
 Every question leaves a trace on the admin-only trace dashboard: route and stage timings, the agent's tool calls, the passages with their keyword and meaning ranks, every model call with tokens and latency, the cited evidence, the flags and the reply. Traces hold children's questions, so the dashboard needs an admin token, keeps prompts only with `TRACE_STORE=full`, never stores a message labelled personal, and deletes traces with their session and after 30 days. Each turn is also exported as an OpenTelemetry trace (viewed in Jaeger), with a span per stage, model call and tool call and the GenAI attribute names, but no child text by default; the dashboard links each turn to its OpenTelemetry trace by id (Appendix G, with screenshots of both).
 
-**Deployed.** The system runs live at https://mukilans-storyquest.hf.space (Hugging Face Spaces, free tier): the same app and agent on the course endpoint, as a read-only demo with book upload and review closed and the trace dashboard behind a demo token (Appendix G.4). A first visit after a quiet spell can take about a minute while the Space wakes up.
+**Deployed.** The system runs live at https://mukilans-storyquest.hf.space (Hugging Face Spaces): the same app and agent on the course endpoint, as a read-only demo with book upload and review closed and the trace dashboard behind a demo token (Appendix G.4). A first visit after a quiet spell can take about a minute while the Space wakes up.
 ---
 
 ## 7. Evaluation
