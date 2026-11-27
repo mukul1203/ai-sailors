@@ -8,9 +8,11 @@
 
 | Deliverable | Link |
 |---|---|
+| **Live deployed system** (play chapter 1 and ask the agent; read-only demo on Hugging Face Spaces) | https://mukilans-storyquest.hf.space |
 | Git repository (reproducible code; `README.md` gives setup and every command) | https://github.com/mukul1203/ai-sailors |
 | 10-minute demo of the running system | https://drive.google.com/file/d/1-3E-kw4dDWIdXJy1CmhiIp88Ej9NBMeC/view?usp=sharing |
-| Trace dashboard (Section 6; screenshots of the dashboard and its OpenTelemetry view, also shown live in the demo) | https://drive.google.com/drive/folders/10D756POwDYm2p0T8Q7ZaqsJpoafUl9ZP?usp=sharing |
+| **Live trace dashboard** (Section 6): open the **Traces** tab and enter the demo admin token `sailors-demo-b50a04e3` | https://mukilans-storyquest.hf.space/traces |
+| Trace dashboard screenshots, including the OpenTelemetry (Jaeger) view | https://drive.google.com/drive/folders/10D756POwDYm2p0T8Q7ZaqsJpoafUl9ZP?usp=sharing |
 | Evaluation reports (per-question HTML for dev and test, judge calibration, planted-injection results) | https://drive.google.com/drive/folders/1FtxzCHAFL_deNxbhSSObqPfHJNZwu4qj?usp=sharing |
 | Model card and Responsible AI | Section 8 of this report |
 
@@ -192,6 +194,8 @@ The React app has four tabs: **Play** (published chapters), **Books** (add and p
 ![Figure 5. A quest part: the retelling with clues and new words, Read to me, the "what happens next?" cards and the question box with the hearts counter](images/quest-scene.jpg)
 
 Every question leaves a trace on the admin-only trace dashboard: route and stage timings, the agent's tool calls, the passages with their keyword and meaning ranks, every model call with tokens and latency, the cited evidence, the flags and the reply. Traces hold children's questions, so the dashboard needs an admin token, keeps prompts only with `TRACE_STORE=full`, never stores a message labelled personal, and deletes traces with their session and after 30 days. Each turn is also exported as an OpenTelemetry trace (viewed in Jaeger), with a span per stage, model call and tool call and the GenAI attribute names, but no child text by default; the dashboard links each turn to its OpenTelemetry trace by id (Appendix G, with screenshots of both).
+
+**Deployed.** The system runs live at https://mukilans-storyquest.hf.space (Hugging Face Spaces, free tier): the same app and agent on the course endpoint, as a read-only demo with book upload and review closed and the trace dashboard behind a demo token (Appendix G.4). A first visit after a quiet spell can take about a minute while the Space wakes up.
 ---
 
 ## 7. Evaluation
@@ -587,6 +591,7 @@ Server text is written with `textContent` only.
 
 ### G.4 Deployment
 
+- **Live demo:** https://mukilans-storyquest.hf.space, a Hugging Face Space running the same FastAPI app and React build, with M5 on the course endpoint. Secrets (keys, endpoint addresses, CA certificates) are Space secrets. `READ_ONLY_DEMO=true` closes book upload, review, publish and chapter preparation, since there are no accounts yet; the trace dashboard keeps its own token, a demo-only one. Sessions and traces last until the Space restarts.
 - **Dockerfile:** a Node stage builds the web app; a Python 3.12-slim stage serves it. The `WITH_RERANKER` build argument controls whether CPU torch and the cross-encoder are baked in. The container runs as a non-root user with a `/data` volume and a health check.
 - **docker-compose:** two services, `app` and `worker`, sharing one image. `make up` starts the app.
 - **Makefile:** about 40 self-documenting targets for setup, run, quality checks (`make check` runs lint, mypy strict and tests), data, evaluation and SSH deployment.
