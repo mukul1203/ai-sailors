@@ -1,7 +1,7 @@
 # StoryQuest Copilot — Technical Report
 
 **Project:** ai-sailors · **Track:** B (hosted Qwen3-8B, no GPU) · **Programme:** upGrad Executive PG in GenAI and Agentic AI
-**AI-Sailors Team:** Mukul Agrawal, Mukilan S, Gulshan Nayak, Alok Kumar, Ramya Roy
+**AI-Sailors Team:** Mukul Agrawal, Mukilan S, Gulshan Nayak, Alok Kumar, Ramya Roy, Yogesh Sharma
 
 ---
 
